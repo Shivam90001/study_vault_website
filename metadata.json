@@ -1,0 +1,6 @@
+{
+  "name": "StudyVault - Academic Notes & PYQ Portal",
+  "description": "Comprehensive student portal for university course notes, previous year question papers, syllabus, and study resources with admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
