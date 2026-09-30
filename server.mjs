@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const dataDirectory = path.join(root, '.studyvault-data');
+const dataDirectory = process.env.DATA_DIR || path.join(root, '.studyvault-data');
 const dataFile = path.join(dataDirectory, 'analytics.json');
 const isProduction = process.env.NODE_ENV === 'production';
 const serveBuiltFiles = isProduction || process.argv.includes('--preview');
@@ -152,7 +152,35 @@ function allowEvent(request) {
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '8kb' }));
+app.use(express.json({ limit: '25mb' }));
+
+app.get('/api/content', async (request, response, next) => {
+  try {
+    const store = await loadStore();
+    response.json({ content: store.content || null });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/content', requireOwner, async (request, response, next) => {
+  try {
+    const { courses, semesters, subjects, documents, mcqs, siteConfig, notices } = request.body || {};
+    if (![courses, semesters, subjects, documents, mcqs, notices].every(Array.isArray)
+      || !siteConfig || typeof siteConfig !== 'object' || Array.isArray(siteConfig)) {
+      response.status(400).json({ error: 'Invalid shared content.' });
+      return;
+    }
+
+    const content = { courses, semesters, subjects, documents, mcqs, siteConfig, notices };
+    await mutateStore(store => {
+      store.content = content;
+    });
+    response.json({ saved: true });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.post('/api/analytics/events', async (request, response, next) => {
   try {

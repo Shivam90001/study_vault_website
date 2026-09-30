@@ -61,6 +61,7 @@ export const OwnerDashboardPage: React.FC = () => {
     siteConfig,
     updateSiteConfig,
     ownerCredentials,
+    contentSyncStatus,
     updateOwnerCredentials,
     navigateTo,
     openDocument,
@@ -381,6 +382,22 @@ export const OwnerDashboardPage: React.FC = () => {
           <span className="font-bold">{successMsg}</span>
         </div>
       )}
+
+      <div className={`p-3.5 rounded-2xl border text-xs font-semibold ${
+        contentSyncStatus === 'saved'
+          ? 'bg-emerald-950/50 border-emerald-500/30 text-emerald-300'
+          : contentSyncStatus === 'saving' || contentSyncStatus === 'loading'
+            ? 'bg-slate-900 border-slate-700 text-slate-300'
+            : contentSyncStatus === 'local'
+              ? 'bg-amber-950/50 border-amber-500/30 text-amber-300'
+              : 'bg-rose-950/50 border-rose-500/30 text-rose-300'
+      }`}>
+        {contentSyncStatus === 'saved' && 'Changes are saved and shared with all visitors.'}
+        {contentSyncStatus === 'saving' && 'Saving changes for all visitors...'}
+        {contentSyncStatus === 'loading' && 'Loading shared website content...'}
+        {contentSyncStatus === 'local' && 'This device has not published its existing content yet.'}
+        {contentSyncStatus === 'error' && 'Shared save failed. Check the server connection and sign in again.'}
+      </div>
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">

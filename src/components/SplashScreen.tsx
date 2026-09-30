@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { GraduationCap, Sparkles, ArrowRight } from 'lucide-react';
+import { GraduationCap, Sparkles } from 'lucide-react';
 
 interface Props {
   siteName: string;
@@ -44,16 +44,6 @@ export const SplashScreen: React.FC<Props> = ({ siteName, siteTagline, onFinish 
 
     return () => clearInterval(timer);
   }, []); // Empty dependency array: runs strictly once on mount
-
-  const handleSkip = () => {
-    if (!hasCompletedRef.current) {
-      hasCompletedRef.current = true;
-      setIsFadingOut(true);
-      setTimeout(() => {
-        onFinishRef.current();
-      }, 150);
-    }
-  };
 
   return (
     <div
@@ -107,14 +97,6 @@ export const SplashScreen: React.FC<Props> = ({ siteName, siteTagline, onFinish 
           </div>
         </div>
 
-        {/* Skip button for instant entry */}
-        <button
-          onClick={handleSkip}
-          className="text-xs text-slate-500 hover:text-indigo-400 transition-colors inline-flex items-center gap-1 pt-2 cursor-pointer font-medium"
-        >
-          <span>Skip Intro</span>
-          <ArrowRight className="w-3 h-3" />
-        </button>
       </div>
 
       {/* Footer hint */}

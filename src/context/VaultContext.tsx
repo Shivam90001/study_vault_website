@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   Course, 
   Semester, 
@@ -28,6 +28,7 @@ interface VaultContextType {
   notices: NoticeItem[];
   activeNotice: NoticeItem | null;
   ownerCredentials: OwnerCredentials;
+  contentSyncStatus: 'loading' | 'local' | 'saving' | 'saved' | 'error';
   isOwnerLoggedIn: boolean;
   bookmarks: string[];
   viewState: ViewState;
@@ -96,6 +97,16 @@ const STORAGE_KEYS = {
   BOOKMARKS: 'studyvault_bookmarks_v3',
   ANALYTICS: 'studyvault_analytics_v1',
 };
+
+interface SharedContent {
+  courses: Course[];
+  semesters: Semester[];
+  subjects: Subject[];
+  documents: StudyDocument[];
+  mcqs: MCQQuestion[];
+  siteConfig: SiteConfig;
+  notices: NoticeItem[];
+}
 
 export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -188,6 +199,10 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [viewState, setViewState] = useState<ViewState>({ view: 'courses' });
   const [selectedDocument, setSelectedDocument] = useState<StudyDocument | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [contentSyncStatus, setContentSyncStatus] = useState<VaultContextType['contentSyncStatus']>('loading');
+  const [sharedContentReady, setSharedContentReady] = useState(false);
+  const hasSharedContent = useRef(false);
+  const contentSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
   // Active Notice (first active item)
   const activeNotice = notices.find(n => n.isActive) || null;
@@ -232,6 +247,66 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(bookmarks));
   }, [bookmarks]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSharedContent = async () => {
+      try {
+        const response = await fetch('/api/content');
+        if (!response.ok) throw new Error('Shared content could not be loaded.');
+        const { content } = await response.json() as { content: SharedContent | null };
+        if (cancelled) return;
+        if (content) {
+          hasSharedContent.current = true;
+          setCourses(content.courses);
+          setSemesters(content.semesters);
+          setSubjects(content.subjects);
+          setDocuments(content.documents);
+          setMcqs(content.mcqs);
+          setSiteConfig(content.siteConfig);
+          setNotices(content.notices);
+          setContentSyncStatus('saved');
+        } else {
+          setContentSyncStatus('local');
+        }
+      } catch {
+        if (!cancelled) setContentSyncStatus('error');
+      } finally {
+        if (!cancelled) setSharedContentReady(true);
+      }
+    };
+
+    void loadSharedContent();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOwnerLoggedIn || !sharedContentReady || !hasSharedContent.current) return;
+    let cancelled = false;
+    const content: SharedContent = { courses, semesters, subjects, documents, mcqs, siteConfig, notices };
+    setContentSyncStatus('saving');
+
+    contentSaveQueue.current = contentSaveQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const response = await fetch('/api/content', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(content)
+        });
+        if (!response.ok) throw new Error('Shared content could not be saved.');
+        if (!cancelled) setContentSyncStatus('saved');
+      })
+      .catch(() => {
+        if (!cancelled) setContentSyncStatus('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [courses, semesters, subjects, documents, mcqs, siteConfig, notices, isOwnerLoggedIn, sharedContentReady]);
 
   // Record one anonymous browsing session per tab.
   useEffect(() => {
@@ -435,6 +510,36 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         body: JSON.stringify({ username, passwordPrimary: pass1, passwordSecondary: pass2 })
       });
       if (!response.ok) return false;
+
+      const contentResponse = await fetch('/api/content');
+      if (contentResponse.ok) {
+        const { content } = await contentResponse.json() as { content: SharedContent | null };
+        if (content) {
+          hasSharedContent.current = true;
+          setCourses(content.courses);
+          setSemesters(content.semesters);
+          setSubjects(content.subjects);
+          setDocuments(content.documents);
+          setMcqs(content.mcqs);
+          setSiteConfig(content.siteConfig);
+          setNotices(content.notices);
+          setContentSyncStatus('saved');
+        } else {
+          const legacyContent: SharedContent = { courses, semesters, subjects, documents, mcqs, siteConfig, notices };
+          const migrationResponse = await fetch('/api/content', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(legacyContent)
+          });
+          if (!migrationResponse.ok) throw new Error('Your existing owner content could not be published.');
+          hasSharedContent.current = true;
+          setContentSyncStatus('saved');
+        }
+        setSharedContentReady(true);
+      } else {
+        setContentSyncStatus('error');
+      }
+
       setIsOwnerLoggedIn(true);
       navigateTo({ view: 'owner-dashboard' });
       return true;
@@ -581,6 +686,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteNotice,
         toggleNoticeActive,
         ownerCredentials,
+        contentSyncStatus,
         isOwnerLoggedIn,
         bookmarks,
         viewState,
