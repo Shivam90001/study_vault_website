@@ -1,13 +1,16 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
-import { randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const dataDirectory = process.env.DATA_DIR || path.join(root, '.studyvault-data');
+const defaultDataDirectory = process.env.RENDER === 'true'
+  ? path.join('/var/data', 'studyvault')
+  : path.join(root, '.studyvault-data');
+const dataDirectory = process.env.DATA_DIR || defaultDataDirectory;
 const dataFile = path.join(dataDirectory, 'analytics.json');
 const isProduction = process.env.NODE_ENV === 'production';
 const serveBuiltFiles = isProduction || process.argv.includes('--preview');
@@ -40,6 +43,12 @@ function hashPassword(password, salt = randomBytes(16).toString('hex')) {
 function createDefaultStore() {
   return {
     activities: [],
+    analyticsTotals: {
+      totalVisits: 0,
+      uniqueBrowsers: {},
+      totalDocumentViews: 0,
+      totalMCQAttempts: 0
+    },
     ownerCredentials: {
       username: ownerUsername,
       passwordPrimary: hashPassword(ownerPasswordPrimary),
@@ -52,9 +61,31 @@ const defaultStore = createDefaultStore();
 let mutationQueue = Promise.resolve();
 const eventRateLimits = new Map();
 
+function getAnalyticsTotals(store) {
+  if (store.analyticsTotals) return store.analyticsTotals;
+
+  const activities = Array.isArray(store.activities) ? store.activities : [];
+  const uniqueBrowsers = {};
+  for (const activity of activities) {
+    if (typeof activity.visitorId === 'string') {
+      uniqueBrowsers[createHash('sha256').update(activity.visitorId).digest('hex')] = true;
+    }
+  }
+
+  store.analyticsTotals = {
+    totalVisits: activities.filter(activity => activity.action === 'PAGE_VISIT').length,
+    uniqueBrowsers,
+    totalDocumentViews: activities.filter(activity => activity.action === 'DOCUMENT_VIEW').length,
+    totalMCQAttempts: activities.filter(activity => activity.action === 'MCQ_PRACTICE').length
+  };
+  return store.analyticsTotals;
+}
+
 async function loadStore() {
   try {
-    return JSON.parse(await readFile(dataFile, 'utf8'));
+    const store = JSON.parse(await readFile(dataFile, 'utf8'));
+    getAnalyticsTotals(store);
+    return store;
   } catch (error) {
     if (error.code === 'ENOENT') return structuredClone(defaultStore);
     throw error;
@@ -128,11 +159,12 @@ function clearOwnerCookie(response) {
 
 function toAnalytics(store) {
   const activities = [...store.activities].sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+  const totals = getAnalyticsTotals(store);
   return {
-    totalVisits: activities.filter(activity => activity.action === 'PAGE_VISIT').length,
-    uniqueVisitors: new Set(activities.map(activity => activity.visitorId)).size,
-    totalDocumentViews: activities.filter(activity => activity.action === 'DOCUMENT_VIEW').length,
-    totalMCQAttempts: activities.filter(activity => activity.action === 'MCQ_PRACTICE').length,
+    totalVisits: totals.totalVisits,
+    uniqueVisitors: Object.keys(totals.uniqueBrowsers).length,
+    totalDocumentViews: totals.totalDocumentViews,
+    totalMCQAttempts: totals.totalMCQAttempts,
     activities: activities.slice(0, 100)
   };
 }
@@ -206,6 +238,11 @@ app.post('/api/analytics/events', async (request, response, next) => {
     };
 
     await mutateStore(store => {
+      const totals = getAnalyticsTotals(store);
+      if (action === 'PAGE_VISIT') totals.totalVisits += 1;
+      if (action === 'DOCUMENT_VIEW') totals.totalDocumentViews += 1;
+      if (action === 'MCQ_PRACTICE') totals.totalMCQAttempts += 1;
+      totals.uniqueBrowsers[createHash('sha256').update(visitorId).digest('hex')] = true;
       store.activities = [activity, ...store.activities].slice(0, 10_000);
     });
     response.status(202).json({ accepted: true });
