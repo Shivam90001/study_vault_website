@@ -1,7 +1,8 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
@@ -10,8 +11,8 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDirectory = process.env.RENDER === 'true'
   ? path.join('/var/data', 'studyvault')
   : path.join(root, '.studyvault-data');
-const dataDirectory = process.env.DATA_DIR || defaultDataDirectory;
-const dataFile = path.join(dataDirectory, 'analytics.json');
+let dataDirectory = process.env.DATA_DIR || defaultDataDirectory;
+let dataFile = path.join(dataDirectory, 'analytics.json');
 const isProduction = process.env.NODE_ENV === 'production';
 const serveBuiltFiles = isProduction || process.argv.includes('--preview');
 const sessionSecret = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
@@ -97,6 +98,34 @@ async function saveStore(store) {
   const temporaryFile = `${dataFile}.${randomUUID()}.tmp`;
   await writeFile(temporaryFile, JSON.stringify(store), { mode: 0o600 });
   await rename(temporaryFile, dataFile);
+}
+
+async function verifyWritableDirectory(directory) {
+  await mkdir(directory, { recursive: true });
+  const probeFile = path.join(directory, `.write-check-${randomUUID()}`);
+  await writeFile(probeFile, '', { flag: 'wx' });
+  await rm(probeFile);
+}
+
+async function prepareDataDirectory() {
+  try {
+    await verifyWritableDirectory(dataDirectory);
+  } catch (error) {
+    if (process.env.RENDER !== 'true') {
+      throw new Error(`StudyVault cannot write to DATA_DIR "${dataDirectory}". Configure a writable persistent disk path.`, { cause: error });
+    }
+
+    const unavailableDataDirectory = dataDirectory;
+    dataDirectory = path.join(tmpdir(), 'studyvault');
+    dataFile = path.join(dataDirectory, 'analytics.json');
+    try {
+      await verifyWritableDirectory(dataDirectory);
+    } catch (fallbackError) {
+      throw new Error(`StudyVault cannot write to its temporary data directory "${dataDirectory}".`, { cause: fallbackError });
+    }
+
+    console.warn(`Persistent storage at "${unavailableDataDirectory}" is unavailable. Using temporary storage at "${dataDirectory}"; data may be lost when the service restarts. Configure DATA_DIR to the mounted disk path.`);
+  }
 }
 
 function mutateStore(mutator) {
@@ -353,6 +382,7 @@ app.use((error, request, response, next) => {
 });
 
 const port = Number(process.env.PORT || 3000);
+await prepareDataDirectory();
 httpServer.listen(port, '0.0.0.0', () => {
   console.log(`StudyVault ${isProduction ? 'server' : 'dev server'} running at http://localhost:${port}`);
 });
