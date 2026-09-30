@@ -150,6 +150,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
           {/* Tab 1: Syllabus */}
           <button
+            data-ad-trigger
             onClick={() => {
               setActiveTab('syllabus');
               setSelectedUnit('all');
@@ -178,6 +179,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
 
           {/* Tab 2: PYQs */}
           <button
+            data-ad-trigger
             onClick={() => {
               setActiveTab('pyq');
               setSelectedUnit('all');
@@ -206,6 +208,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
 
           {/* Tab 3: Notes */}
           <button
+            data-ad-trigger
             onClick={() => {
               setActiveTab('notes');
               setSelectedUnit('all');
@@ -234,6 +237,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
 
           {/* Tab 4: MCQs */}
           <button
+            data-ad-trigger
             onClick={() => {
               setActiveTab('mcq');
               setSelectedUnit('all');
@@ -383,6 +387,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
                           <button
                             key={optIdx}
                             disabled={isAnswered}
+                            data-ad-trigger
                             onClick={() => handleSelectOption(item.id, optIdx)}
                             className={`p-3 rounded-xl border text-left text-xs transition-all cursor-pointer flex items-center justify-between ${btnStyle}`}
                           >
@@ -467,6 +472,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
 
                       <h3
                         onClick={() => openDocument(doc)}
+                        data-ad-trigger={['syllabus', 'pyq', 'notes'].includes(doc.type) ? '' : undefined}
                         className="text-base sm:text-lg font-bold text-white group-hover:text-indigo-300 transition-colors cursor-pointer"
                       >
                         {doc.title}
@@ -491,6 +497,7 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
                     <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
                       <button
                         onClick={() => openDocument(doc)}
+                        data-ad-trigger={['syllabus', 'pyq', 'notes'].includes(doc.type) ? '' : undefined}
                         className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
                       >
                         <Eye className="w-4 h-4" />
