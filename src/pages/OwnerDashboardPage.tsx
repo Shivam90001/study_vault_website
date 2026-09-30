@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   ShieldCheck, 
   LogOut, 
@@ -31,7 +31,8 @@ import {
   Flame,
   Bell,
   Download,
-  Archive
+  Archive,
+  ChevronDown
 } from 'lucide-react';
 import { useVault } from '../context/VaultContext';
 import { DocumentType, FileFormat, VisitorActivity } from '../types';
@@ -85,9 +86,14 @@ export const OwnerDashboardPage: React.FC = () => {
   };
 
   // --- FORM STATE: ADD RESOURCE (Syllabus, PYQ, Notes, Photos) ---
-  const [resCourseId, setResCourseId] = useState(courses[0]?.id || 'btech');
-  const [resSemesterId, setResSemesterId] = useState('btech-sem3');
-  const [resSubjectId, setResSubjectId] = useState('sub-btech-dsa');
+  const initialResourceCourseId = courses[0]?.id || '';
+  const initialResourceSemesterId = semesters.find(s => s.courseId === initialResourceCourseId)?.id || '';
+  const initialResourceSubject = subjects.find(s => s.courseId === initialResourceCourseId && s.semesterId === initialResourceSemesterId);
+  const [resCourseId, setResCourseId] = useState(initialResourceCourseId);
+  const [resSemesterId, setResSemesterId] = useState(initialResourceSemesterId);
+  const [resSubjectId, setResSubjectId] = useState(initialResourceSubject?.id || '');
+  const [resSubjectQuery, setResSubjectQuery] = useState(initialResourceSubject ? `${initialResourceSubject.code} - ${initialResourceSubject.name}` : '');
+  const [isResSubjectOpen, setIsResSubjectOpen] = useState(false);
   const [resType, setResType] = useState<DocumentType>('notes');
   const [resUnit, setResUnit] = useState<number | 'all'>(1);
   const [resTitle, setResTitle] = useState('');
@@ -131,6 +137,10 @@ export const OwnerDashboardPage: React.FC = () => {
   const handleAddResourceSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!resTitle.trim()) return;
+    if (!resFilteredSubjects.some(subject => subject.id === resSubjectId)) {
+      showNotification('Please select a subject from the subject list.');
+      return;
+    }
 
     addDocument({
       title: resTitle,
@@ -315,7 +325,29 @@ export const OwnerDashboardPage: React.FC = () => {
 
   // Helper filters
   const resFilteredSemesters = semesters.filter(s => s.courseId === resCourseId);
-  const resFilteredSubjects = subjects.filter(s => s.semesterId === resSemesterId);
+  const resFilteredSubjects = subjects.filter(s => s.courseId === resCourseId && s.semesterId === resSemesterId);
+  const selectedResourceSubject = resFilteredSubjects.find(subject => subject.id === resSubjectId);
+  const resSubjectOptions = resSubjectQuery === (selectedResourceSubject ? `${selectedResourceSubject.code} - ${selectedResourceSubject.name}` : '')
+    ? resFilteredSubjects
+    : resFilteredSubjects.filter(subject => `${subject.code} - ${subject.name}`.toLowerCase().includes(resSubjectQuery.trim().toLowerCase()));
+
+  useEffect(() => {
+    const courseId = courses.some(course => course.id === resCourseId) ? resCourseId : courses[0]?.id || '';
+    const courseSemesters = semesters.filter(semester => semester.courseId === courseId);
+    const semesterId = courseSemesters.some(semester => semester.id === resSemesterId)
+      ? resSemesterId
+      : courseSemesters[0]?.id || '';
+    const availableSubjects = subjects.filter(subject => subject.courseId === courseId && subject.semesterId === semesterId);
+    const selectedSubject = availableSubjects.find(subject => subject.id === resSubjectId) || availableSubjects[0];
+    const subjectId = selectedSubject?.id || '';
+
+    if (courseId !== resCourseId) setResCourseId(courseId);
+    if (semesterId !== resSemesterId) setResSemesterId(semesterId);
+    if (subjectId !== resSubjectId) setResSubjectId(subjectId);
+    if (!resSubjectId || (selectedSubject && selectedSubject.id !== resSubjectId)) {
+      setResSubjectQuery(selectedSubject ? `${selectedSubject.code} - ${selectedSubject.name}` : '');
+    }
+  }, [courses, semesters, subjects]);
 
   const subFilteredSemesters = semesters.filter(s => s.courseId === subCourseTarget);
 
@@ -884,13 +916,14 @@ export const OwnerDashboardPage: React.FC = () => {
                   <select
                     value={resCourseId}
                     onChange={(e) => {
-                      setResCourseId(e.target.value);
-                      const sems = semesters.filter(s => s.courseId === e.target.value);
-                      if (sems.length > 0) {
-                        setResSemesterId(sems[0].id);
-                        const subs = subjects.filter(sub => sub.semesterId === sems[0].id);
-                        if (subs.length > 0) setResSubjectId(subs[0].id);
-                      }
+                      const courseId = e.target.value;
+                      const semester = semesters.find(s => s.courseId === courseId);
+                      const subject = subjects.find(sub => sub.courseId === courseId && sub.semesterId === semester?.id);
+                      setResCourseId(courseId);
+                      setResSemesterId(semester?.id || '');
+                      setResSubjectId(subject?.id || '');
+                      setResSubjectQuery(subject ? `${subject.code} - ${subject.name}` : '');
+                      setIsResSubjectOpen(false);
                     }}
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-white"
                   >
@@ -905,9 +938,12 @@ export const OwnerDashboardPage: React.FC = () => {
                   <select
                     value={resSemesterId}
                     onChange={(e) => {
-                      setResSemesterId(e.target.value);
-                      const subs = subjects.filter(sub => sub.semesterId === e.target.value);
-                      if (subs.length > 0) setResSubjectId(subs[0].id);
+                      const semesterId = e.target.value;
+                      const subject = subjects.find(sub => sub.courseId === resCourseId && sub.semesterId === semesterId);
+                      setResSemesterId(semesterId);
+                      setResSubjectId(subject?.id || '');
+                      setResSubjectQuery(subject ? `${subject.code} - ${subject.name}` : '');
+                      setIsResSubjectOpen(false);
                     }}
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-white"
                   >
@@ -919,15 +955,70 @@ export const OwnerDashboardPage: React.FC = () => {
 
                 <div>
                   <label className="block text-slate-400 font-bold mb-1">Subject</label>
-                  <select
-                    value={resSubjectId}
-                    onChange={(e) => setResSubjectId(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-white"
+                  <div
+                    className="relative"
+                    onBlur={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsResSubjectOpen(false);
+                    }}
                   >
-                    {resFilteredSubjects.map(sub => (
-                      <option key={sub.id} value={sub.id}>{sub.code} - {sub.name}</option>
-                    ))}
-                  </select>
+                    <div className="flex w-full items-center rounded-xl border border-slate-700/80 bg-slate-950 focus-within:border-indigo-500">
+                      <input
+                        type="text"
+                        role="combobox"
+                        aria-autocomplete="list"
+                        aria-expanded={isResSubjectOpen}
+                        aria-controls="resource-subject-options"
+                        autoComplete="off"
+                        value={resSubjectQuery}
+                        onFocus={() => setIsResSubjectOpen(true)}
+                        onChange={(e) => {
+                          const query = e.target.value;
+                          const matchingSubject = resFilteredSubjects.find(subject => `${subject.code} - ${subject.name}`.toLowerCase() === query.trim().toLowerCase());
+                          setResSubjectQuery(query);
+                          setResSubjectId(matchingSubject?.id || '');
+                          setIsResSubjectOpen(true);
+                        }}
+                        placeholder={resFilteredSubjects.length ? 'Search or choose a subject...' : 'No subjects in this semester'}
+                        className="min-w-0 flex-1 bg-transparent px-3 py-2 text-white outline-none placeholder:text-slate-500"
+                      />
+                      <button
+                        type="button"
+                        aria-label={isResSubjectOpen ? 'Close subject list' : 'Open subject list'}
+                        aria-expanded={isResSubjectOpen}
+                        onClick={() => setIsResSubjectOpen(open => !open)}
+                        className="flex h-9 w-10 shrink-0 items-center justify-center text-slate-400 hover:text-white"
+                      >
+                        <ChevronDown className={`h-4 w-4 transition-transform ${isResSubjectOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </div>
+                    {isResSubjectOpen && (
+                      <div id="resource-subject-options" role="listbox" className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-1 shadow-xl">
+                        {resSubjectOptions.length ? resSubjectOptions.map(subject => {
+                          const label = `${subject.code} - ${subject.name}`;
+                          return (
+                            <button
+                              key={subject.id}
+                              type="button"
+                              role="option"
+                              aria-selected={subject.id === resSubjectId}
+                              onClick={() => {
+                                setResSubjectId(subject.id);
+                                setResSubjectQuery(label);
+                                setIsResSubjectOpen(false);
+                              }}
+                              className="block w-full rounded-lg px-3 py-2 text-left text-white hover:bg-slate-800 aria-selected:bg-slate-800"
+                            >
+                              {label}
+                            </button>
+                          );
+                        }) : (
+                          <p className="px-3 py-2 text-slate-400">
+                            {resFilteredSubjects.length ? 'No matching subjects.' : 'Add a subject to this course and semester first.'}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
