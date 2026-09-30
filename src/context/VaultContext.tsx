@@ -202,7 +202,23 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [contentSyncStatus, setContentSyncStatus] = useState<VaultContextType['contentSyncStatus']>('loading');
   const [sharedContentReady, setSharedContentReady] = useState(false);
   const hasSharedContent = useRef(false);
+  const sharedContentSnapshot = useRef<string | null>(null);
   const contentSaveQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const applySharedContent = (content: SharedContent) => {
+    const snapshot = JSON.stringify(content);
+    if (sharedContentSnapshot.current === snapshot) return;
+    sharedContentSnapshot.current = snapshot;
+    hasSharedContent.current = true;
+    setCourses(content.courses);
+    setSemesters(content.semesters);
+    setSubjects(content.subjects);
+    setDocuments(content.documents);
+    setMcqs(content.mcqs);
+    setSiteConfig(content.siteConfig);
+    setNotices(content.notices);
+    setContentSyncStatus('saved');
+  };
 
   // Active Notice (first active item)
   const activeNotice = notices.find(n => n.isActive) || null;
@@ -252,20 +268,12 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let cancelled = false;
     const loadSharedContent = async () => {
       try {
-        const response = await fetch('/api/content');
+        const response = await fetch('/api/content', { cache: 'no-store' });
         if (!response.ok) throw new Error('Shared content could not be loaded.');
         const { content } = await response.json() as { content: SharedContent | null };
         if (cancelled) return;
         if (content) {
-          hasSharedContent.current = true;
-          setCourses(content.courses);
-          setSemesters(content.semesters);
-          setSubjects(content.subjects);
-          setDocuments(content.documents);
-          setMcqs(content.mcqs);
-          setSiteConfig(content.siteConfig);
-          setNotices(content.notices);
-          setContentSyncStatus('saved');
+          applySharedContent(content);
         } else {
           setContentSyncStatus('local');
         }
@@ -281,6 +289,28 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!sharedContentReady || isOwnerLoggedIn) return;
+    let cancelled = false;
+
+    const refreshSharedContent = async () => {
+      try {
+        const response = await fetch('/api/content', { cache: 'no-store' });
+        if (!response.ok) return;
+        const { content } = await response.json() as { content: SharedContent | null };
+        if (!cancelled && content) applySharedContent(content);
+      } catch {}
+    };
+
+    const intervalId = window.setInterval(refreshSharedContent, 5000);
+    window.addEventListener('focus', refreshSharedContent);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshSharedContent);
+    };
+  }, [sharedContentReady, isOwnerLoggedIn]);
 
   useEffect(() => {
     if (!isOwnerLoggedIn || !sharedContentReady || !hasSharedContent.current) return;
@@ -511,19 +541,11 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       if (!response.ok) return false;
 
-      const contentResponse = await fetch('/api/content');
+      const contentResponse = await fetch('/api/content', { cache: 'no-store' });
       if (contentResponse.ok) {
         const { content } = await contentResponse.json() as { content: SharedContent | null };
         if (content) {
-          hasSharedContent.current = true;
-          setCourses(content.courses);
-          setSemesters(content.semesters);
-          setSubjects(content.subjects);
-          setDocuments(content.documents);
-          setMcqs(content.mcqs);
-          setSiteConfig(content.siteConfig);
-          setNotices(content.notices);
-          setContentSyncStatus('saved');
+          applySharedContent(content);
         } else {
           const legacyContent: SharedContent = { courses, semesters, subjects, documents, mcqs, siteConfig, notices };
           const migrationResponse = await fetch('/api/content', {
@@ -532,8 +554,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             body: JSON.stringify(legacyContent)
           });
           if (!migrationResponse.ok) throw new Error('Your existing owner content could not be published.');
-          hasSharedContent.current = true;
-          setContentSyncStatus('saved');
+          applySharedContent(legacyContent);
         }
         setSharedContentReady(true);
       } else {

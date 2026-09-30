@@ -189,6 +189,7 @@ app.use(express.json({ limit: '25mb' }));
 app.get('/api/content', async (request, response, next) => {
   try {
     const store = await loadStore();
+    response.set('Cache-Control', 'no-store');
     response.json({ content: store.content || null });
   } catch (error) {
     next(error);
