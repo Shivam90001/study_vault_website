@@ -2,9 +2,6 @@ import { Course, Semester, Subject } from '../types';
 
 export const INITIAL_COURSES: Course[] = [
   { 
-
-<a href="https://omg10.com/4/11922745" target="_blank"></a>
-
  id: 'btech',
     name: 'B.Tech - Bachelor of Technology',
     code: 'B.Tech',
