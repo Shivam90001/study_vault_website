@@ -1,9 +1,7 @@
 import { Course, Semester, Subject } from '../types';
 
 export const INITIAL_COURSES: Course[] = [
-  {
-
-    id: 'btech',
+  {  id: 'btech',
     name: 'B.Tech - Bachelor of Technology',
     code: 'B.Tech',
     description: 'Engineering syllabus, handwritten notes, previous year question papers, and lab manuals.',
