@@ -1143,7 +1143,7 @@ export const OwnerDashboardPage: React.FC = () => {
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Choose multiple files or photos at once. Both selections are grouped together under this one resource.
+                  Har picker ek baar kholkar usme saari files/photos select karein, phir neeche Publish ek baar dabayein. Dono selections ek hi resource mein upload hongi.
                 </p>
                 {resFiles.length > 0 && (
                   <div className="space-y-2 pt-1">
@@ -1199,7 +1199,9 @@ export const OwnerDashboardPage: React.FC = () => {
                 disabled={isUploadingResource}
                 className="py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold cursor-pointer shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:cursor-wait disabled:opacity-60"
               >
-                {isUploadingResource ? 'Uploading...' : 'Publish Resource to Website'}
+                {isUploadingResource
+                  ? `Uploading ${resFiles.length} file${resFiles.length === 1 ? '' : 's'}...`
+                  : `Publish Resource${resFiles.length ? ` with ${resFiles.length} file${resFiles.length === 1 ? '' : 's'}` : ''} to Website`}
               </button>
             </form>
           </div>
