@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   ShieldCheck, 
   LogOut, 
@@ -108,6 +108,8 @@ export const OwnerDashboardPage: React.FC = () => {
   const [resFileName, setResFileName] = useState<string>('');
   const [isUploadingResource, setIsUploadingResource] = useState(false);
   const [resourceAssignmentDrafts, setResourceAssignmentDrafts] = useState<Record<string, { subjectId: string; type: DocumentType }>>({});
+  const filePickerRef = useRef<HTMLInputElement>(null);
+  const photoPickerRef = useRef<HTMLInputElement>(null);
 
   // Keep the selected file local until its resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1082,16 +1084,45 @@ export const OwnerDashboardPage: React.FC = () => {
               </div>
 
               {/* File Attachment / File Picker */}
-              <div className="p-4 rounded-2xl bg-slate-950 border border-dashed border-slate-700 space-y-2">
+              <div className="p-4 rounded-2xl bg-slate-950 border border-dashed border-slate-700 space-y-3">
                 <label className="block text-slate-300 font-bold">
-                  Attach Any File (up to 100 MB)
+                  Attach a File or Photo (up to 100 MB)
                 </label>
                 <input
                   type="file"
+                  ref={filePickerRef}
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                   onChange={handleFileUpload}
-                  className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
+                  className="hidden"
                 />
+                <input
+                  type="file"
+                  ref={photoPickerRef}
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => filePickerRef.current?.click()}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Choose file
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => photoPickerRef.current?.click()}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    Choose photo from gallery
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  On phones, choose a file or select a photo from your device.
+                </p>
                 {resFileName && (
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-emerald-400">
                     <span className="flex min-w-0 items-center gap-1.5">
