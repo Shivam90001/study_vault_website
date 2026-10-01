@@ -1,6 +1,14 @@
 export type DocumentType = 'syllabus' | 'pyq' | 'notes' | 'mcq' | 'photo';
 export type FileFormat = string;
 
+export interface UploadedAttachment {
+  fileName: string;
+  fileUrl: string;
+  fileMimeType: string;
+  fileFormat: FileFormat;
+  fileSize: string;
+}
+
 export interface Course {
   id: string;
   name: string;
@@ -56,6 +64,7 @@ export interface StudyDocument {
   fileDataUrl?: string;
   fileUrl?: string;
   fileMimeType?: string;
+  attachments?: UploadedAttachment[];
   fileSize: string;
   pagesCount: number;
   author: string;

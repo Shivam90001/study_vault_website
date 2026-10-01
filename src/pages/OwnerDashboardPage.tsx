@@ -15,7 +15,6 @@ import {
   Layers,
   Sparkles,
   Lock,
-  Image as ImageIcon,
   GraduationCap,
   Calendar,
   BookOpen,
@@ -30,10 +29,10 @@ import {
   TrendingUp,
   Flame,
   Bell,
-  ChevronDown
+  ChevronDown,
 } from 'lucide-react';
 import { useVault } from '../context/VaultContext';
-import { DocumentType, FileFormat, VisitorActivity } from '../types';
+import { DocumentType, FileFormat, UploadedAttachment, VisitorActivity } from '../types';
 
 export const OwnerDashboardPage: React.FC = () => {
   const { 
@@ -106,7 +105,6 @@ export const OwnerDashboardPage: React.FC = () => {
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(() => new Set());
   const [isDeletingUploads, setIsDeletingUploads] = useState(false);
   const filePickerRef = useRef<HTMLInputElement>(null);
-  const photoPickerRef = useRef<HTMLInputElement>(null);
 
   // Keep selected files local until their shared resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,69 +131,83 @@ export const OwnerDashboardPage: React.FC = () => {
     }
 
     setIsUploadingResource(true);
-    const filesToPublish: Array<File | null> = resFiles.length ? resFiles : [null];
-    let publishedCount = 0;
+    const uploadedAttachments: UploadedAttachment[] = [];
     try {
-      for (const file of filesToPublish) {
-        let uploadedFile: { fileUrl: string; contentType: string } | undefined;
-        if (file) {
-          const response = await fetch('/api/uploads', {
-            method: 'POST',
-            headers: {
-              'Content-Type': file.type || 'application/octet-stream',
-              'X-File-Name': encodeURIComponent(file.name)
-            },
-            body: file
-          });
-          if (!response.ok) {
-            const result = await response.json().catch(() => null) as { error?: string } | null;
-            throw new Error(result?.error || `Upload failed for ${file.name}. Please sign in again and retry.`);
-          }
-          uploadedFile = await response.json() as { fileUrl: string; contentType: string };
+      for (const file of resFiles) {
+        const response = await fetch('/api/uploads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+            'X-File-Name': encodeURIComponent(file.name)
+          },
+          body: file
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(result?.error || `Upload failed for ${file.name}. Please sign in again and retry.`);
         }
 
-        const extension = file?.name.split('.').pop()?.toLowerCase();
-        const fileFormat = extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : resFormat;
-        const fileTitle = file?.name.replace(/\.[^.]+$/, '') || file?.name || resTitle.trim();
-        const title = file && filesToPublish.length > 1 ? `${resTitle.trim()} - ${fileTitle}` : resTitle.trim();
-        addDocument({
-          title,
-          courseId: resCourseId,
-          semesterId: resSemesterId,
-          subjectId: resSubjectId,
-          type: resType,
-          unit: resUnit,
+        const uploadedFile = await response.json() as { fileUrl: string; contentType: string };
+        const extension = file.name.split('.').pop()?.toLowerCase();
+        const fileFormat = extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : 'file';
+        uploadedAttachments.push({
+          fileName: file.name,
+          fileUrl: uploadedFile.fileUrl,
+          fileMimeType: uploadedFile.contentType,
           fileFormat,
-          fileName: file?.name || `${resTitle}.${fileFormat}`,
-          fileUrl: uploadedFile?.fileUrl,
-          fileMimeType: uploadedFile?.contentType,
-          fileSize: file ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : '3.5 MB',
-          pagesCount: resPages || 15,
-          author: resAuthor || 'StudyVault Faculty',
-          tags: [resType.toUpperCase(), fileFormat.toUpperCase(), 'Verified'],
-          summary: resSummary || `${title} official resource uploaded for university preparation.`,
-          previewPages: [
-            {
-              pageNumber: 1,
-              title: `${title} - Overview`,
-              content: [resSummary || 'Protected university notes and study resources.']
-            }
-          ]
+          fileSize: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
         });
-        publishedCount += 1;
-        if (file) {
-          setResFiles(currentFiles => currentFiles.filter(selectedFile => selectedFile !== file));
-        }
       }
+
+      const firstAttachment = uploadedAttachments[0];
+      const fileFormat = firstAttachment?.fileFormat || resFormat;
+      const title = resTitle.trim();
+      const totalFileSize = resFiles.reduce((total, file) => total + file.size, 0);
+      addDocument({
+        title,
+        courseId: resCourseId,
+        semesterId: resSemesterId,
+        subjectId: resSubjectId,
+        type: resType,
+        unit: resUnit,
+        fileFormat,
+        fileName: firstAttachment?.fileName || `${title}.${fileFormat}`,
+        fileUrl: firstAttachment?.fileUrl,
+        fileMimeType: firstAttachment?.fileMimeType,
+        attachments: uploadedAttachments.length ? uploadedAttachments : undefined,
+        fileSize: resFiles.length
+          ? `${(totalFileSize / (1024 * 1024)).toFixed(1)} MB`
+          : '3.5 MB',
+        pagesCount: resPages || 15,
+        author: resAuthor || 'StudyVault Faculty',
+        tags: [resType.toUpperCase(), fileFormat.toUpperCase(), 'Verified'],
+        summary: resSummary || `${title} official resource uploaded for university preparation.`,
+        previewPages: [
+          {
+            pageNumber: 1,
+            title: `${title} - Overview`,
+            content: [resSummary || 'Protected university notes and study resources.']
+          }
+        ]
+      });
 
       setResTitle('');
       setResSummary('');
       setResFiles([]);
-      showNotification(`${publishedCount} resource${publishedCount === 1 ? '' : 's'} uploaded and published for all visitors.`);
+      showNotification(`Resource with ${resFiles.length} file${resFiles.length === 1 ? '' : 's'} uploaded and published for all visitors.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Resource could not be uploaded.';
-      showNotification(publishedCount
-        ? `${publishedCount} resource${publishedCount === 1 ? '' : 's'} published; remaining selected files are kept. ${message}`
+      let cleanupFailures = 0;
+      for (const attachment of uploadedAttachments) {
+        try {
+          const response = await fetch(attachment.fileUrl, { method: 'DELETE' });
+          if (!response.ok) cleanupFailures += 1;
+        } catch {
+          cleanupFailures += 1;
+        }
+      }
+      showNotification(cleanupFailures
+        ? `${message} ${cleanupFailures} partially uploaded file${cleanupFailures === 1 ? ' could' : 's could'} not be cleaned up.`
         : message);
     } finally {
       setIsUploadingResource(false);
@@ -380,14 +392,13 @@ export const OwnerDashboardPage: React.FC = () => {
     d.title.toLowerCase().includes(searchDocTerm.toLowerCase()) ||
     d.author.toLowerCase().includes(searchDocTerm.toLowerCase())
   );
-  const filteredUploads = filteredDocuments.filter(document => Boolean(document.fileUrl));
-  const allVisibleUploadsSelected = filteredUploads.length > 0
-    && filteredUploads.every(document => selectedUploadIds.has(document.id));
+  const allVisibleDocumentsSelected = filteredDocuments.length > 0
+    && filteredDocuments.every(document => selectedUploadIds.has(document.id));
 
   const handleDeleteSelectedUploads = async () => {
-    const documentsToDelete = documents.filter(document => document.fileUrl && selectedUploadIds.has(document.id));
+    const documentsToDelete = documents.filter(document => selectedUploadIds.has(document.id));
     if (!documentsToDelete.length || isDeletingUploads) return;
-    if (!confirm(`Permanently remove ${documentsToDelete.length} selected uploaded file${documentsToDelete.length === 1 ? '' : 's'} and its website resource${documentsToDelete.length === 1 ? '' : 's'}?`)) return;
+    if (!confirm(`Permanently remove ${documentsToDelete.length} selected material${documentsToDelete.length === 1 ? '' : 's'} and all attached uploaded files?`)) return;
 
     setIsDeletingUploads(true);
     const failedIds = new Set<string>();
@@ -403,9 +414,9 @@ export const OwnerDashboardPage: React.FC = () => {
     setSelectedUploadIds(failedIds);
     setIsDeletingUploads(false);
     if (failedIds.size) {
-      showNotification(`${deletedCount} file${deletedCount === 1 ? '' : 's'} removed; ${failedIds.size} could not be removed. Select and retry them.`);
+      showNotification(`${deletedCount} material${deletedCount === 1 ? '' : 's'} removed; ${failedIds.size} could not be removed. Select and retry them.`);
     } else {
-      showNotification(`${deletedCount} uploaded file${deletedCount === 1 ? '' : 's'} and resource${deletedCount === 1 ? '' : 's'} removed.`);
+      showNotification(`${deletedCount} material${deletedCount === 1 ? '' : 's'} and its attached files removed.`);
     }
   };
 
@@ -1101,14 +1112,6 @@ export const OwnerDashboardPage: React.FC = () => {
                   onChange={handleFileUpload}
                   className="hidden"
                 />
-                <input
-                  type="file"
-                  ref={photoPickerRef}
-                  accept="image/*"
-                  multiple
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1117,20 +1120,11 @@ export const OwnerDashboardPage: React.FC = () => {
                     className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500"
                   >
                     <FileText className="h-4 w-4" />
-                    Choose files
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => photoPickerRef.current?.click()}
-                    disabled={isUploadingResource}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700"
-                  >
-                    <ImageIcon className="h-4 w-4" />
-                    Choose photos from gallery
+                    Choose multiple files or photos
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Select multiple photos, PDFs, or supported files. Each selected file is published as a separate resource with the course and subject chosen above.
+                  Select multiple photos, PDFs, or supported files at once. They will be grouped together under this one resource.
                 </p>
                 {resFiles.length > 0 && (
                   <div className="space-y-2 pt-1">
@@ -1211,12 +1205,12 @@ export const OwnerDashboardPage: React.FC = () => {
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white"
                   />
                 </div>
-                {allVisibleUploadsSelected ? (
+                {allVisibleDocumentsSelected ? (
                   <button
                     type="button"
                     onClick={() => setSelectedUploadIds(current => {
                       const next = new Set(current);
-                      filteredUploads.forEach(document => next.delete(document.id));
+                      filteredDocuments.forEach(document => next.delete(document.id));
                       return next;
                     })}
                     disabled={isDeletingUploads}
@@ -1227,11 +1221,11 @@ export const OwnerDashboardPage: React.FC = () => {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setSelectedUploadIds(current => new Set([...current, ...filteredUploads.map(document => document.id)]))}
-                    disabled={!filteredUploads.length || isDeletingUploads}
+                    onClick={() => setSelectedUploadIds(current => new Set([...current, ...filteredDocuments.map(document => document.id)]))}
+                    disabled={!filteredDocuments.length || isDeletingUploads}
                     className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Select visible files
+                    Select visible materials
                   </button>
                 )}
                 <button
@@ -1268,7 +1262,7 @@ export const OwnerDashboardPage: React.FC = () => {
                     return (
                       <tr key={doc.id} className="hover:bg-slate-800/40">
                         <td className="py-3 px-3">
-                          {doc.fileUrl && (
+                          <div className="flex items-center gap-2">
                             <input
                               type="checkbox"
                               checked={selectedUploadIds.has(doc.id)}
@@ -1279,10 +1273,15 @@ export const OwnerDashboardPage: React.FC = () => {
                                 else next.delete(doc.id);
                                 return next;
                               })}
-                              aria-label={`Select uploaded file for ${doc.title}`}
+                              aria-label={`Select material ${doc.title}`}
                               className="h-4 w-4 accent-indigo-500"
                             />
-                          )}
+                            <span className="max-w-32 truncate" title={doc.fileName || undefined}>
+                              {doc.attachments?.length
+                                ? `${doc.attachments.length} files`
+                                : doc.fileName || 'Material'}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-4 max-w-sm truncate font-medium text-white">
                           {doc.title}

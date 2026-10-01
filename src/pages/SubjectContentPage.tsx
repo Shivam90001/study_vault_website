@@ -454,7 +454,9 @@ export const SubjectContentPage: React.FC<Props> = ({ courseId, semesterId, subj
                           {doc.type}
                         </span>
                         <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                          {doc.fileFormat.toUpperCase()}
+                          {doc.attachments && doc.attachments.length > 1
+                            ? `${doc.attachments.length} FILES`
+                            : doc.fileFormat.toUpperCase()}
                         </span>
                         {doc.unit !== 'all' ? (
                           <span className="text-[10px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/20 px-2 py-0.5 rounded">

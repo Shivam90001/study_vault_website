@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { 
   X, 
   Bookmark, 
@@ -35,18 +35,38 @@ export const DocumentViewer: React.FC = () => {
   const [fontSize, setFontSize] = useState<number>(15);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
+
+  useEffect(() => {
+    setActivePageIndex(0);
+    setActiveAttachmentIndex(0);
+  }, [selectedDocument?.id]);
 
   if (!selectedDocument) return null;
 
   const doc = selectedDocument;
   const isSaved = isBookmarked(doc.id);
-  const uploadedFileUrl = doc.fileUrl || doc.fileDataUrl;
-  const isUploadedImage = Boolean(uploadedFileUrl && (doc.fileMimeType?.startsWith('image/')
-    ? doc.fileMimeType !== 'image/svg+xml'
-    : doc.fileFormat === 'jpg' || doc.fileFormat === 'jpeg' || doc.fileFormat === 'png'));
-  const isUploadedPdf = Boolean(doc.fileUrl && (doc.fileMimeType === 'application/pdf'
-    || doc.fileFormat === 'pdf'
-    || doc.fileName?.toLowerCase().endsWith('.pdf')));
+  const uploadedAttachments = doc.attachments?.length
+    ? doc.attachments
+    : doc.fileUrl
+      ? [{
+        fileName: doc.fileName || doc.title,
+        fileUrl: doc.fileUrl,
+        fileMimeType: doc.fileMimeType || '',
+        fileFormat: doc.fileFormat,
+        fileSize: doc.fileSize
+      }]
+      : [];
+  const activeAttachment = uploadedAttachments[activeAttachmentIndex] || uploadedAttachments[0];
+  const activeFileFormat = activeAttachment?.fileFormat || doc.fileFormat;
+  const activeMimeType = activeAttachment?.fileMimeType || doc.fileMimeType;
+  const uploadedFileUrl = activeAttachment?.fileUrl || doc.fileDataUrl;
+  const isUploadedImage = Boolean(uploadedFileUrl && (activeMimeType?.startsWith('image/')
+    ? activeMimeType !== 'image/svg+xml'
+    : ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(activeFileFormat.toLowerCase())));
+  const isUploadedPdf = Boolean(activeAttachment && (activeMimeType === 'application/pdf'
+    || activeFileFormat.toLowerCase() === 'pdf'
+    || activeAttachment.fileName.toLowerCase().endsWith('.pdf')));
   const pages = doc.previewPages && doc.previewPages.length > 0 ? doc.previewPages : [
     {
       pageNumber: 1,
@@ -97,9 +117,9 @@ export const DocumentViewer: React.FC = () => {
               <div className="flex items-center gap-2 text-[11px] text-slate-400">
                 <span className="uppercase text-indigo-400 font-semibold">{doc.type}</span>
                 <span>•</span>
-                <span className="uppercase font-mono text-[10px] text-emerald-400 font-bold">{doc.fileFormat}</span>
+                <span className="uppercase font-mono text-[10px] text-emerald-400 font-bold">{activeFileFormat}</span>
                 <span>•</span>
-                <span>{doc.pagesCount} Pages</span>
+                <span>{uploadedAttachments.length > 1 ? `${uploadedAttachments.length} Files` : `${doc.pagesCount} Pages`}</span>
                 <span>•</span>
                 <span className="text-amber-400 font-medium flex items-center gap-1">
                   <Lock className="w-3 h-3" /> View Only (Protected)
@@ -232,11 +252,11 @@ export const DocumentViewer: React.FC = () => {
           </div>
 
           {/* If Custom Uploaded File / Image */}
-          {doc.fileUrl && isUploadedImage ? (
+          {activeAttachment && isUploadedImage ? (
             <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
               <img 
-                src={doc.fileUrl}
-                alt={doc.title} 
+                src={activeAttachment.fileUrl}
+                alt={activeAttachment.fileName}
                 className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none select-none"
                 draggable={false}
                 onContextMenu={event => event.preventDefault()}
@@ -245,14 +265,14 @@ export const DocumentViewer: React.FC = () => {
                 {doc.summary}
               </p>
             </div>
-          ) : doc.fileUrl && isUploadedPdf ? (
+          ) : activeAttachment && isUploadedPdf ? (
             <Suspense fallback={<p className="p-8 text-center text-sm text-slate-300">Loading PDF viewer...</p>}>
-              <UploadedPdfViewer fileUrl={doc.fileUrl} title={doc.title} />
+              <UploadedPdfViewer fileUrl={activeAttachment.fileUrl} title={activeAttachment.fileName} />
             </Suspense>
-          ) : doc.fileUrl ? (
+          ) : activeAttachment ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
               <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
-              <p className="mb-4 text-sm font-semibold text-white">{doc.fileName || doc.title}</p>
+              <p className="mb-4 text-sm font-semibold text-white">{activeAttachment.fileName}</p>
               <p className="text-sm text-slate-400">This file type cannot be previewed on the website. Downloads are disabled.</p>
             </div>
           ) : (doc.type === 'photo' || doc.fileFormat === 'jpg' || doc.fileFormat === 'png') && (doc.imageUrl || doc.fileDataUrl) ? (
@@ -297,6 +317,40 @@ export const DocumentViewer: React.FC = () => {
                     Exam Formula / Key Result:
                   </span>
                   <span className="text-white font-semibold">{currentPage.formula}</span>
+                </div>
+              )}
+
+              {uploadedAttachments.length > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
+                  <button
+                    type="button"
+                    disabled={activeAttachmentIndex === 0}
+                    onClick={() => setActiveAttachmentIndex(index => Math.max(0, index - 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Previous file
+                  </button>
+                  <label className="min-w-0 flex-1 text-center text-xs text-slate-300">
+                    <span className="mr-2 text-slate-500">{activeAttachmentIndex + 1} of {uploadedAttachments.length}</span>
+                    <select
+                      aria-label="Choose attached file to view"
+                      value={activeAttachmentIndex}
+                      onChange={event => setActiveAttachmentIndex(Number(event.target.value))}
+                      className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-white"
+                    >
+                      {uploadedAttachments.map((attachment, index) => (
+                        <option key={`${attachment.fileUrl}:${index}`} value={index}>{attachment.fileName}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={activeAttachmentIndex === uploadedAttachments.length - 1}
+                    onClick={() => setActiveAttachmentIndex(index => Math.min(uploadedAttachments.length - 1, index + 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next file <ChevronRight className="h-4 w-4" />
+                  </button>
                 </div>
               )}
 

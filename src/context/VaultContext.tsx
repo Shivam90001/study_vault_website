@@ -656,9 +656,13 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteDocument = async (id: string) => {
     const document = documents.find(item => item.id === id);
-    if (document?.fileUrl?.startsWith('/api/uploads/')) {
-      const response = await fetch(document.fileUrl, { method: 'DELETE' });
-      if (!response.ok) throw new Error('Uploaded file could not be removed from storage.');
+    const uploadedFileUrls = new Set([
+      document?.fileUrl,
+      ...(document?.attachments?.map(attachment => attachment.fileUrl) || [])
+    ].filter((fileUrl): fileUrl is string => Boolean(fileUrl?.startsWith('/api/uploads/'))));
+    for (const fileUrl of uploadedFileUrls) {
+      const response = await fetch(fileUrl, { method: 'DELETE' });
+      if (!response.ok) throw new Error('An attached uploaded file could not be removed from storage.');
     }
     setDocuments(prev => prev.filter(d => d.id !== id));
     if (selectedDocument?.id === id) {
