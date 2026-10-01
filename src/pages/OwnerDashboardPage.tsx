@@ -15,6 +15,7 @@ import {
   Layers,
   Sparkles,
   Lock,
+  Image as ImageIcon,
   GraduationCap,
   Calendar,
   BookOpen,
@@ -105,6 +106,7 @@ export const OwnerDashboardPage: React.FC = () => {
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(() => new Set());
   const [isDeletingUploads, setIsDeletingUploads] = useState(false);
   const filePickerRef = useRef<HTMLInputElement>(null);
+  const photoPickerRef = useRef<HTMLInputElement>(null);
 
   // Keep selected files local until their shared resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1112,6 +1114,14 @@ export const OwnerDashboardPage: React.FC = () => {
                   onChange={handleFileUpload}
                   className="hidden"
                 />
+                <input
+                  type="file"
+                  ref={photoPickerRef}
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -1120,11 +1130,20 @@ export const OwnerDashboardPage: React.FC = () => {
                     className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500"
                   >
                     <FileText className="h-4 w-4" />
-                    Choose multiple files or photos
+                    Choose files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => photoPickerRef.current?.click()}
+                    disabled={isUploadingResource}
+                    className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700"
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    Choose photos from gallery
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Select multiple photos, PDFs, or supported files at once. They will be grouped together under this one resource.
+                  Choose multiple files or photos at once. Both selections are grouped together under this one resource.
                 </p>
                 {resFiles.length > 0 && (
                   <div className="space-y-2 pt-1">
