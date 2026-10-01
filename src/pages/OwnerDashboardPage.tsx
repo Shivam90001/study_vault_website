@@ -105,6 +105,8 @@ export const OwnerDashboardPage: React.FC = () => {
   const [resFiles, setResFiles] = useState<File[]>([]);
   const [isUploadingResource, setIsUploadingResource] = useState(false);
   const [resourceAssignmentDrafts, setResourceAssignmentDrafts] = useState<Record<string, { subjectId: string; type: DocumentType }>>({});
+  const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(() => new Set());
+  const [isDeletingUploads, setIsDeletingUploads] = useState(false);
   const filePickerRef = useRef<HTMLInputElement>(null);
   const photoPickerRef = useRef<HTMLInputElement>(null);
 
@@ -380,6 +382,34 @@ export const OwnerDashboardPage: React.FC = () => {
     d.title.toLowerCase().includes(searchDocTerm.toLowerCase()) ||
     d.author.toLowerCase().includes(searchDocTerm.toLowerCase())
   );
+  const filteredUploads = filteredDocuments.filter(document => Boolean(document.fileUrl));
+  const allVisibleUploadsSelected = filteredUploads.length > 0
+    && filteredUploads.every(document => selectedUploadIds.has(document.id));
+
+  const handleDeleteSelectedUploads = async () => {
+    const documentsToDelete = documents.filter(document => document.fileUrl && selectedUploadIds.has(document.id));
+    if (!documentsToDelete.length || isDeletingUploads) return;
+    if (!confirm(`Permanently remove ${documentsToDelete.length} selected uploaded file${documentsToDelete.length === 1 ? '' : 's'} and its website resource${documentsToDelete.length === 1 ? '' : 's'}?`)) return;
+
+    setIsDeletingUploads(true);
+    const failedIds = new Set<string>();
+    let deletedCount = 0;
+    for (const document of documentsToDelete) {
+      try {
+        await deleteDocument(document.id);
+        deletedCount += 1;
+      } catch {
+        failedIds.add(document.id);
+      }
+    }
+    setSelectedUploadIds(failedIds);
+    setIsDeletingUploads(false);
+    if (failedIds.size) {
+      showNotification(`${deletedCount} file${deletedCount === 1 ? '' : 's'} removed; ${failedIds.size} could not be removed. Select and retry them.`);
+    } else {
+      showNotification(`${deletedCount} uploaded file${deletedCount === 1 ? '' : 's'} and resource${deletedCount === 1 ? '' : 's'} removed.`);
+    }
+  };
 
   return (
     <div className="space-y-8 py-6">
@@ -1224,10 +1254,21 @@ export const OwnerDashboardPage: React.FC = () => {
               </div>
             </div>
 
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setSelectedUploadIds(current => {
+                const next = new Set(current);
+                filteredUploads.forEach(document => next.delete(document.id));
+                return allVisibleUploadsSelected ? next : new Set([...next, ...filteredUploads.map(document => document.id)]);
+              })} disabled={!filteredUploads.length || isDeletingUploads} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-50">
+                {allVisibleUploadsSelected ? 'Clear selection' : 'Select visible files'}
+              </button>
+              <button type="button" onClick={handleDeleteSelectedUploads} disabled={!selectedUploadIds.size || isDeletingUploads} className="rounded-xl bg-rose-950/50 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-50">Remove selected files ({selectedUploadIds.size})</button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-[11px] text-slate-400 uppercase tracking-wider border-b border-slate-800">
                   <tr>
+                    <th className="py-3 px-3">File</th>
                     <th className="py-3 px-4">Title</th>
                     <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Format</th>
@@ -1244,6 +1285,23 @@ export const OwnerDashboardPage: React.FC = () => {
 
                     return (
                       <tr key={doc.id} className="hover:bg-slate-800/40">
+                        <td className="py-3 px-3">
+                          {doc.fileUrl && (
+                            <input
+                              type="checkbox"
+                              checked={selectedUploadIds.has(doc.id)}
+                              disabled={isDeletingUploads}
+                              onChange={event => setSelectedUploadIds(current => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(doc.id);
+                                else next.delete(doc.id);
+                                return next;
+                              })}
+                              aria-label={`Select uploaded file for ${doc.title}`}
+                              className="h-4 w-4 accent-indigo-500"
+                            />
+                          )}
+                        </td>
                         <td className="py-3 px-4 max-w-sm truncate font-medium text-white">
                           {doc.title}
                         </td>
