@@ -213,7 +213,10 @@ function allowEvent(request) {
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json({
+  limit: '25mb',
+  type: request => request.path !== '/api/uploads' && request.is('application/json')
+}));
 
 app.get('/api/content', async (request, response, next) => {
   try {
@@ -221,6 +224,62 @@ app.get('/api/content', async (request, response, next) => {
     response.set('Cache-Control', 'no-store');
     response.json({ content: store.content || null });
   } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '100mb' }), async (request, response, next) => {
+  try {
+    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+      response.status(400).json({ error: 'Choose a non-empty file to upload.' });
+      return;
+    }
+
+    let originalName;
+    try {
+      originalName = decodeURIComponent(request.get('X-File-Name') || 'upload');
+    } catch {
+      response.status(400).json({ error: 'Invalid file name.' });
+      return;
+    }
+    originalName = path.basename(originalName.replaceAll('\\', '/')).slice(0, 255) || 'upload';
+
+    const contentType = request.get('Content-Type') || 'application/octet-stream';
+    const safeContentType = /^[\w.+-]+\/[\w.+-]+$/.test(contentType) ? contentType : 'application/octet-stream';
+    const id = randomUUID();
+    const uploadDirectory = path.join(dataDirectory, 'uploads');
+    const storedFile = path.join(uploadDirectory, `${id}.blob`);
+
+    await mkdir(uploadDirectory, { recursive: true });
+    await writeFile(storedFile, request.body, { flag: 'wx', mode: 0o600 });
+    await writeFile(path.join(uploadDirectory, `${id}.json`), JSON.stringify({ contentType: safeContentType, fileName: originalName }));
+
+    response.status(201).json({ fileUrl: `/api/uploads/${id}`, contentType: safeContentType });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/uploads/:id', async (request, response, next) => {
+  try {
+    if (!/^[\da-f-]{36}$/i.test(request.params.id)) {
+      response.status(404).end();
+      return;
+    }
+
+    const uploadDirectory = path.join(dataDirectory, 'uploads');
+    const metadata = JSON.parse(await readFile(path.join(uploadDirectory, `${request.params.id}.json`), 'utf8'));
+    const contentType = /^[\w.+-]+\/[\w.+-]+$/.test(metadata.contentType) ? metadata.contentType : 'application/octet-stream';
+    const inlineTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp']);
+    response.set('X-Content-Type-Options', 'nosniff');
+    response.set('Content-Type', contentType);
+    response.set('Content-Disposition', inlineTypes.has(contentType) ? 'inline' : 'attachment');
+    response.sendFile(path.join(uploadDirectory, `${request.params.id}.blob`));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      response.status(404).end();
+      return;
+    }
     next(error);
   }
 });

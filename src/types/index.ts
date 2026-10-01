@@ -1,5 +1,5 @@
 export type DocumentType = 'syllabus' | 'pyq' | 'notes' | 'mcq' | 'photo';
-export type FileFormat = 'pdf' | 'jpg' | 'png' | 'docx';
+export type FileFormat = string;
 
 export interface Course {
   id: string;
@@ -54,6 +54,8 @@ export interface StudyDocument {
   fileFormat: FileFormat;
   fileName?: string;
   fileDataUrl?: string;
+  fileUrl?: string;
+  fileMimeType?: string;
   fileSize: string;
   pagesCount: number;
   author: string;

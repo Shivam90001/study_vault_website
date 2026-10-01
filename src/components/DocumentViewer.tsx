@@ -39,6 +39,11 @@ export const DocumentViewer: React.FC = () => {
 
   const doc = selectedDocument;
   const isSaved = isBookmarked(doc.id);
+  const uploadedFileUrl = doc.fileUrl || doc.fileDataUrl;
+  const isUploadedImage = Boolean(uploadedFileUrl && (doc.fileMimeType?.startsWith('image/')
+    ? doc.fileMimeType !== 'image/svg+xml'
+    : doc.fileFormat === 'jpg' || doc.fileFormat === 'jpeg' || doc.fileFormat === 'png'));
+  const isUploadedPdf = Boolean(doc.fileUrl && (doc.fileMimeType === 'application/pdf' || doc.fileFormat === 'pdf'));
   const pages = doc.previewPages && doc.previewPages.length > 0 ? doc.previewPages : [
     {
       pageNumber: 1,
@@ -213,7 +218,7 @@ export const DocumentViewer: React.FC = () => {
             <div className="flex items-center gap-4 text-slate-400">
               <div className="flex items-center gap-1 text-emerald-400">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span className="font-semibold text-white">Protected Document</span>
+                <span className="font-semibold text-white">Owner-Published File</span>
               </div>
               <div className="flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -223,16 +228,40 @@ export const DocumentViewer: React.FC = () => {
           </div>
 
           {/* If Custom Uploaded File / Image */}
-          {(doc.type === 'photo' || doc.fileFormat === 'jpg' || doc.fileFormat === 'png') && (doc.imageUrl || doc.fileDataUrl) ? (
+          {doc.fileUrl && isUploadedImage ? (
             <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
               <img 
-                src={doc.fileDataUrl || doc.imageUrl} 
+                src={doc.fileUrl}
                 alt={doc.title} 
                 className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none"
               />
               <p className="text-xs text-slate-400 mt-4 leading-relaxed max-w-2xl mx-auto">
                 {doc.summary}
               </p>
+            </div>
+          ) : doc.fileUrl && isUploadedPdf ? (
+            <iframe
+              src={doc.fileUrl}
+              title={doc.title}
+              className="h-[70vh] min-h-96 w-full rounded-2xl border border-slate-800 bg-white"
+            />
+          ) : doc.fileUrl ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
+              <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
+              <p className="mb-4 text-sm font-semibold text-white">{doc.fileName || doc.title}</p>
+              <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+                Open file
+              </a>
+              <p className="mt-4 text-xs text-slate-400">This file type may open or download depending on your device.</p>
+            </div>
+          ) : (doc.type === 'photo' || doc.fileFormat === 'jpg' || doc.fileFormat === 'png') && (doc.imageUrl || doc.fileDataUrl) ? (
+            <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
+              <img
+                src={doc.fileDataUrl || doc.imageUrl}
+                alt={doc.title}
+                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none"
+              />
+              <p className="text-xs text-slate-400 mt-4 leading-relaxed max-w-2xl mx-auto">{doc.summary}</p>
             </div>
           ) : (
             /* Document Preview Canvas */
@@ -299,12 +328,12 @@ export const DocumentViewer: React.FC = () => {
             </div>
           )}
 
-          {/* Protected Document Notice Bar (No Download Option) */}
+          {/* File access note */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between gap-4 text-xs text-slate-400">
             <div className="flex items-center gap-2 text-amber-400">
               <Lock className="w-4 h-4 shrink-0" />
               <span>
-                <strong>Protected View:</strong> Downloads and file modifications are disabled by the platform administrator for academic copyright integrity.
+                <strong>Shared file:</strong> PDF and image files display here; other formats open according to your browser.
               </span>
             </div>
             <span className="text-[11px] font-mono text-slate-500 uppercase shrink-0">

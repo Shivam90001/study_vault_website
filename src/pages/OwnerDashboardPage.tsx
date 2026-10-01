@@ -102,80 +102,89 @@ export const OwnerDashboardPage: React.FC = () => {
   const [resFileSize, setResFileSize] = useState('4.2 MB');
   const [resPages, setResPages] = useState(24);
   const [resSummary, setResSummary] = useState('');
-  const [resFileDataUrl, setResFileDataUrl] = useState<string>('');
+  const [resFile, setResFile] = useState<File | null>(null);
+  const [resFileMimeType, setResFileMimeType] = useState('');
   const [resFileName, setResFileName] = useState<string>('');
-  const [resImageUrl, setResImageUrl] = useState<string>('');
+  const [isUploadingResource, setIsUploadingResource] = useState(false);
 
-  // Handle Local File Upload (PDF, JPG, PNG, DOCX)
+  // Keep the selected file local until its resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setResFile(file);
     setResFileName(file.name);
+    setResFileMimeType(file.type || 'application/octet-stream');
     const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
     setResFileSize(`${sizeInMB} MB`);
 
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (extension === 'jpg' || extension === 'jpeg') setResFormat('jpg');
-    else if (extension === 'png') setResFormat('png');
-    else if (extension === 'docx' || extension === 'doc') setResFormat('docx');
-    else setResFormat('pdf');
-
-    // Read file as base64 DataURL for in-browser viewing
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setResFileDataUrl(reader.result);
-        if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
-          setResImageUrl(reader.result);
-        }
-      }
-    };
-    reader.readAsDataURL(file);
+    setResFormat(extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : 'file');
   };
 
-  const handleAddResourceSubmit = (e: React.FormEvent) => {
+  const handleAddResourceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resTitle.trim()) return;
+    if (!resTitle.trim() || isUploadingResource) return;
     if (!resFilteredSubjects.some(subject => subject.id === resSubjectId)) {
       showNotification('Please select a subject from the subject list.');
       return;
     }
 
-    addDocument({
-      title: resTitle,
-      courseId: resCourseId,
-      semesterId: resSemesterId,
-      subjectId: resSubjectId,
-      type: resType,
-      unit: resUnit,
-      fileFormat: resFormat,
-      fileName: resFileName || `${resTitle}.${resFormat}`,
-      fileDataUrl: resFileDataUrl || undefined,
-      imageUrl: resImageUrl || (resFormat === 'jpg' || resFormat === 'png' ? resFileDataUrl : undefined),
-      fileSize: resFileSize || '3.5 MB',
-      pagesCount: resPages || 15,
-      author: resAuthor || 'StudyVault Faculty',
-      tags: [resType.toUpperCase(), resFormat.toUpperCase(), 'Verified'],
-      summary: resSummary || `${resTitle} official resource uploaded for university preparation.`,
-      previewPages: [
-        {
-          pageNumber: 1,
-          title: `${resTitle} - Overview`,
-          content: [
-            resSummary || 'Protected university notes and study resources.',
-            'Direct downloads disabled. Read-only study format.'
-          ]
+    setIsUploadingResource(true);
+    try {
+      let uploadedFile: { fileUrl: string; contentType: string } | undefined;
+      if (resFile) {
+        const response = await fetch('/api/uploads', {
+          method: 'POST',
+          headers: {
+            'Content-Type': resFile.type || 'application/octet-stream',
+            'X-File-Name': encodeURIComponent(resFile.name)
+          },
+          body: resFile
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(result?.error || 'File upload failed. Please sign in again and retry.');
         }
-      ]
-    });
+        uploadedFile = await response.json() as { fileUrl: string; contentType: string };
+      }
 
-    setResTitle('');
-    setResSummary('');
-    setResFileDataUrl('');
-    setResFileName('');
-    setResImageUrl('');
-    showNotification('Resource published successfully with download protection!');
+      addDocument({
+        title: resTitle,
+        courseId: resCourseId,
+        semesterId: resSemesterId,
+        subjectId: resSubjectId,
+        type: resType,
+        unit: resUnit,
+        fileFormat: resFormat,
+        fileName: resFileName || `${resTitle}.${resFormat}`,
+        fileUrl: uploadedFile?.fileUrl,
+        fileMimeType: uploadedFile?.contentType,
+        fileSize: resFileSize || '3.5 MB',
+        pagesCount: resPages || 15,
+        author: resAuthor || 'StudyVault Faculty',
+        tags: [resType.toUpperCase(), resFormat.toUpperCase(), 'Verified'],
+        summary: resSummary || `${resTitle} official resource uploaded for university preparation.`,
+        previewPages: [
+          {
+            pageNumber: 1,
+            title: `${resTitle} - Overview`,
+            content: [resSummary || 'Protected university notes and study resources.']
+          }
+        ]
+      });
+
+      setResTitle('');
+      setResSummary('');
+      setResFile(null);
+      setResFileName('');
+      setResFileMimeType('');
+      showNotification('Resource uploaded and published for all visitors.');
+    } catch (error) {
+      showNotification(error instanceof Error ? error.message : 'Resource could not be uploaded.');
+    } finally {
+      setIsUploadingResource(false);
+    }
   };
 
   // --- FORM STATE: ADD COURSE ---
@@ -905,7 +914,7 @@ export const OwnerDashboardPage: React.FC = () => {
                 <h3 className="text-base font-bold text-white">Upload New Syllabus, PYQ, Notes or Photo</h3>
               </div>
               <span className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-medium">
-                Protected View • Downloads Disabled for Users
+                Shared with all visitors
               </span>
             </div>
 
@@ -1060,6 +1069,7 @@ export const OwnerDashboardPage: React.FC = () => {
                     onChange={(e) => setResFormat(e.target.value as FileFormat)}
                     className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-white uppercase font-mono"
                   >
+                    {!['pdf', 'jpg', 'png', 'docx'].includes(resFormat) && <option value={resFormat}>{resFormat.toUpperCase()} File</option>}
                     <option value="pdf">PDF Document</option>
                     <option value="jpg">JPG Image</option>
                     <option value="png">PNG Image</option>
@@ -1071,18 +1081,17 @@ export const OwnerDashboardPage: React.FC = () => {
               {/* File Attachment / File Picker */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-dashed border-slate-700 space-y-2">
                 <label className="block text-slate-300 font-bold">
-                  Attach File (PDF, JPG, PNG, DOCX)
+                  Attach Any File (up to 100 MB)
                 </label>
                 <input
                   type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.docx,.doc"
                   onChange={handleFileUpload}
                   className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                 />
                 {resFileName && (
                   <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pt-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Loaded: <strong>{resFileName}</strong> ({resFileSize})</span>
+                    <span>Selected: <strong>{resFileName}</strong> ({resFileSize}, {resFileMimeType})</span>
                   </div>
                 )}
               </div>
@@ -1112,9 +1121,10 @@ export const OwnerDashboardPage: React.FC = () => {
 
               <button
                 type="submit"
-                className="py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold cursor-pointer shadow-lg shadow-indigo-600/30 transition-all active:scale-95"
+                disabled={isUploadingResource}
+                className="py-3 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold cursor-pointer shadow-lg shadow-indigo-600/30 transition-all active:scale-95 disabled:cursor-wait disabled:opacity-60"
               >
-                Publish Resource to Website
+                {isUploadingResource ? 'Uploading...' : 'Publish Resource to Website'}
               </button>
             </form>
           </div>
