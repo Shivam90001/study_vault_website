@@ -1,10 +1,13 @@
 import 'dotenv/config';
+import { ZipArchive } from 'archiver';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Readable } from 'node:stream';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 
@@ -278,6 +281,75 @@ app.get('/api/content', async (request, response, next) => {
     response.set('Cache-Control', 'no-store');
     response.json({ content: store.content || null });
   } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/owner/backup', requireOwner, async (request, response, next) => {
+  let archive;
+  try {
+    const store = await loadStore();
+    const content = store.content || {};
+    const uploadEntries = [];
+
+    for (const document of content.documents || []) {
+      const match = document.fileUrl?.match(/^\/api\/uploads\/([\da-f-]{36})$/i);
+      if (!match) continue;
+
+      const id = match[1];
+      let metadataBytes;
+      if (supabaseBucket) {
+        const { data, error } = await supabaseBucket.download(`uploads/${id}.json`);
+        if (error) throw new Error(`Could not include "${document.title}" in the backup: ${error.message}`, { cause: error });
+        metadataBytes = Buffer.from(await data.arrayBuffer());
+      } else {
+        metadataBytes = await readFile(path.join(dataDirectory, 'uploads', `${id}.json`));
+      }
+
+      const metadata = JSON.parse(metadataBytes.toString('utf8'));
+      const originalName = path.basename(String(metadata.fileName || document.fileName || 'file').replaceAll('\\', '/'));
+      const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 180) || 'file';
+      uploadEntries.push({
+        documentId: document.id,
+        title: document.title,
+        fileName: originalName,
+        contentType: metadata.contentType || document.fileMimeType || 'application/octet-stream',
+        archivePath: `uploads/${id}/${safeName}`,
+        id
+      });
+    }
+
+    const backup = {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      content,
+      uploads: uploadEntries.map(({ id, ...entry }) => entry)
+    };
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    archive = new ZipArchive({ zlib: { level: 1 } });
+    archive.on('error', error => response.destroy(error));
+    archive.on('warning', error => response.destroy(error));
+    response.attachment(`studyvault-backup-${timestamp}.zip`);
+    archive.pipe(response);
+    archive.append(JSON.stringify(backup, null, 2), { name: 'studyvault-backup.json' });
+
+    for (const entry of uploadEntries) {
+      if (supabaseBucket) {
+        const { data, error } = await supabaseBucket.download(`uploads/${entry.id}.blob`);
+        if (error) throw new Error(`Could not include "${entry.title}" in the backup: ${error.message}`, { cause: error });
+        archive.append(Readable.fromWeb(data.stream()), { name: entry.archivePath });
+      } else {
+        archive.file(path.join(dataDirectory, 'uploads', `${entry.id}.blob`), { name: entry.archivePath });
+      }
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    if (response.headersSent) {
+      archive?.destroy(error);
+      response.destroy(error);
+      return;
+    }
     next(error);
   }
 });

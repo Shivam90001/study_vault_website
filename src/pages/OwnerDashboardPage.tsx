@@ -1180,9 +1180,19 @@ export const OwnerDashboardPage: React.FC = () => {
           {/* List of Existing Materials with Delete Action */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h3 className="text-base font-bold text-white">
-                Existing Study Materials ({documents.length})
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Existing Study Materials ({documents.length})
+                </h3>
+                <p className="mt-1 text-[11px] text-slate-400">Download a separate copy of your site data and uploaded files.</p>
+              </div>
+              <a
+                href="/api/owner/backup"
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600/15 px-3 py-2 text-xs font-bold text-indigo-200 hover:bg-indigo-600/25"
+              >
+                <Download className="h-4 w-4" />
+                Download full backup
+              </a>
               <div className="relative w-full sm:w-64">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input

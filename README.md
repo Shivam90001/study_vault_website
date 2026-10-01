@@ -12,6 +12,8 @@ Render Free web services have an ephemeral filesystem, so local uploads can be l
 
 The Supabase Free plan currently includes 1 GB of file storage, a 50 MB per-file limit, and 5 GB of monthly egress. Free projects can pause after inactivity; they may need to be resumed before the site can read uploads again. Check the current [Supabase pricing](https://supabase.com/pricing) and usage page.
 
+For an offline copy, log in to the owner dashboard and choose **Resources > Download full backup**. The ZIP includes shared study content and uploaded files, but not owner credentials. Keep copies outside Supabase (for example, on your computer and another storage account); this is a manual backup, not an automatic second copy.
+
 Files already on Render's temporary filesystem are not automatically migrated. Download and re-upload them after configuring Supabase, and verify the course/material records before removing any old deployment data.
 
 ## Render persistent disk
