@@ -240,11 +240,21 @@ export const DocumentViewer: React.FC = () => {
               </p>
             </div>
           ) : doc.fileUrl && isUploadedPdf ? (
-            <iframe
-              src={doc.fileUrl}
-              title={doc.title}
-              className="h-[70vh] min-h-96 w-full rounded-2xl border border-slate-800 bg-white"
-            />
+            <div className="space-y-3">
+              <a
+                href={doc.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-500"
+              >
+                Open PDF in new tab
+              </a>
+              <iframe
+                src={doc.fileUrl}
+                title={doc.title}
+                className="h-[70vh] min-h-96 w-full rounded-2xl border border-slate-800 bg-white"
+              />
+            </div>
           ) : doc.fileUrl ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
               <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />

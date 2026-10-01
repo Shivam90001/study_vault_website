@@ -245,7 +245,10 @@ app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '100mb'
     originalName = path.basename(originalName.replaceAll('\\', '/')).slice(0, 255) || 'upload';
 
     const contentType = request.get('Content-Type') || 'application/octet-stream';
-    const safeContentType = /^[\w.+-]+\/[\w.+-]+$/.test(contentType) ? contentType : 'application/octet-stream';
+    const reportedContentType = /^[\w.+-]+\/[\w.+-]+$/.test(contentType) ? contentType : 'application/octet-stream';
+    const safeContentType = request.body.subarray(0, 5).toString() === '%PDF-'
+      ? 'application/pdf'
+      : reportedContentType;
     const id = randomUUID();
     const uploadDirectory = path.join(dataDirectory, 'uploads');
     const storedFile = path.join(uploadDirectory, `${id}.blob`);
@@ -280,6 +283,24 @@ app.get('/api/uploads/:id', async (request, response, next) => {
       response.status(404).end();
       return;
     }
+    next(error);
+  }
+});
+
+app.delete('/api/uploads/:id', requireOwner, async (request, response, next) => {
+  try {
+    if (!/^[\da-f-]{36}$/i.test(request.params.id)) {
+      response.status(404).end();
+      return;
+    }
+
+    const uploadDirectory = path.join(dataDirectory, 'uploads');
+    await Promise.all([
+      rm(path.join(uploadDirectory, `${request.params.id}.blob`), { force: true }),
+      rm(path.join(uploadDirectory, `${request.params.id}.json`), { force: true })
+    ]);
+    response.status(204).end();
+  } catch (error) {
     next(error);
   }
 });

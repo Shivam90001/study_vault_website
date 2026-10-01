@@ -52,6 +52,7 @@ export const OwnerDashboardPage: React.FC = () => {
     addSubject,
     deleteSubject,
     addDocument, 
+    updateDocument,
     deleteDocument,
     addMCQ,
     deleteMCQ,
@@ -106,6 +107,7 @@ export const OwnerDashboardPage: React.FC = () => {
   const [resFileMimeType, setResFileMimeType] = useState('');
   const [resFileName, setResFileName] = useState<string>('');
   const [isUploadingResource, setIsUploadingResource] = useState(false);
+  const [resourceAssignmentDrafts, setResourceAssignmentDrafts] = useState<Record<string, { subjectId: string; type: DocumentType }>>({});
 
   // Keep the selected file local until its resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -120,6 +122,7 @@ export const OwnerDashboardPage: React.FC = () => {
 
     const extension = file.name.split('.').pop()?.toLowerCase();
     setResFormat(extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : 'file');
+    e.currentTarget.value = '';
   };
 
   const handleAddResourceSubmit = async (e: React.FormEvent) => {
@@ -1085,13 +1088,27 @@ export const OwnerDashboardPage: React.FC = () => {
                 </label>
                 <input
                   type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
                   onChange={handleFileUpload}
                   className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                 />
                 {resFileName && (
-                  <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 pt-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Selected: <strong>{resFileName}</strong> ({resFileSize}, {resFileMimeType})</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-emerald-400">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">Selected: <strong>{resFileName}</strong> ({resFileSize}, {resFileMimeType})</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResFile(null);
+                        setResFileName('');
+                        setResFileMimeType('');
+                      }}
+                      className="text-rose-400 hover:text-rose-300"
+                    >
+                      Remove selected file
+                    </button>
                   </div>
                 )}
               </div>
@@ -1154,14 +1171,16 @@ export const OwnerDashboardPage: React.FC = () => {
                     <th className="py-3 px-4">Title</th>
                     <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Format</th>
-                    <th className="py-3 px-4">Subject</th>
+                    <th className="py-3 px-4">Assign To</th>
+                    <th className="py-3 px-4">Section</th>
                     <th className="py-3 px-4">Unit</th>
-                    <th className="py-3 px-4 text-right">Delete</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-normal">
                   {filteredDocuments.map(doc => {
-                    const sub = subjects.find(s => s.id === doc.subjectId);
+                    const assignment = resourceAssignmentDrafts[doc.id] || { subjectId: doc.subjectId, type: doc.type };
+                    const assignmentChanged = assignment.subjectId !== doc.subjectId || assignment.type !== doc.type;
 
                     return (
                       <tr key={doc.id} className="hover:bg-slate-800/40">
@@ -1176,18 +1195,84 @@ export const OwnerDashboardPage: React.FC = () => {
                         <td className="py-3 px-4 uppercase font-mono font-bold text-emerald-400">
                           {doc.fileFormat}
                         </td>
-                        <td className="py-3 px-4 font-mono text-slate-400">
-                          {sub?.code || doc.subjectId}
+                        <td className="min-w-64 py-3 px-4">
+                          <select
+                            aria-label={`Assign ${doc.title} to a subject`}
+                            value={assignment.subjectId}
+                            onChange={e => setResourceAssignmentDrafts(current => ({
+                              ...current,
+                              [doc.id]: { ...assignment, subjectId: e.target.value }
+                            }))}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-white"
+                          >
+                            {courses.map(course => {
+                              const courseSubjects = subjects.filter(subject => subject.courseId === course.id);
+                              return (
+                                <optgroup key={course.id} label={course.name}>
+                                  {courseSubjects.map(subject => {
+                                    const semester = semesters.find(item => item.id === subject.semesterId);
+                                    return <option key={subject.id} value={subject.id}>{semester?.name || 'Semester'} / {subject.code} - {subject.name}</option>;
+                                  })}
+                                </optgroup>
+                              );
+                            })}
+                          </select>
+                        </td>
+                        <td className="py-3 px-4">
+                          <select
+                            aria-label={`Choose section for ${doc.title}`}
+                            value={assignment.type}
+                            onChange={e => setResourceAssignmentDrafts(current => ({
+                              ...current,
+                              [doc.id]: { ...assignment, type: e.target.value as DocumentType }
+                            }))}
+                            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-white"
+                          >
+                            <option value="syllabus">Syllabus</option>
+                            <option value="pyq">PYQ</option>
+                            <option value="notes">Notes</option>
+                            <option value="mcq">MCQ</option>
+                            <option value="photo">Photo</option>
+                          </select>
                         </td>
                         <td className="py-3 px-4">
                           {doc.unit === 'all' ? 'All' : `Unit ${doc.unit}`}
                         </td>
                         <td className="py-3 px-4 text-right">
+                          {assignmentChanged && (
+                            <button
+                              onClick={() => {
+                                const subject = subjects.find(item => item.id === assignment.subjectId);
+                                if (!subject) {
+                                  showNotification('Choose a valid subject before saving.');
+                                  return;
+                                }
+                                updateDocument(doc.id, {
+                                  courseId: subject.courseId,
+                                  semesterId: subject.semesterId,
+                                  subjectId: subject.id,
+                                  type: assignment.type
+                                });
+                                setResourceAssignmentDrafts(current => {
+                                  const { [doc.id]: _saved, ...remaining } = current;
+                                  return remaining;
+                                });
+                                showNotification('Resource moved to the selected course and section.');
+                              }}
+                              className="mr-2 rounded-lg bg-indigo-600 px-2.5 py-1.5 font-bold text-white hover:bg-indigo-500"
+                            >
+                              Save
+                            </button>
+                          )}
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (confirm(`Remove "${doc.title}"?`)) {
-                                deleteDocument(doc.id);
-                                showNotification('Resource removed.');
+                                try {
+                                  await deleteDocument(doc.id);
+                                  showNotification('Resource and uploaded file removed.');
+                                } catch (error) {
+                                  showNotification(error instanceof Error ? error.message : 'Resource could not be removed.');
+                                }
                               }
                             }}
                             className="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 cursor-pointer"

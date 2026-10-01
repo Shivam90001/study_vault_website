@@ -73,7 +73,8 @@ interface VaultContextType {
   deleteSubject: (subjectId: string) => void;
 
   addDocument: (doc: Omit<StudyDocument, 'id' | 'viewsCount' | 'uploadDate'>) => void;
-  deleteDocument: (id: string) => void;
+  updateDocument: (id: string, updates: Partial<Pick<StudyDocument, 'courseId' | 'semesterId' | 'subjectId' | 'type'>>) => void;
+  deleteDocument: (id: string) => Promise<void>;
   
   addMCQ: (mcq: Omit<MCQQuestion, 'id'>) => void;
   deleteMCQ: (id: string) => void;
@@ -649,7 +650,16 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDocuments(prev => [newDoc, ...prev]);
   };
 
-  const deleteDocument = (id: string) => {
+  const updateDocument = (id: string, updates: Partial<Pick<StudyDocument, 'courseId' | 'semesterId' | 'subjectId' | 'type'>>) => {
+    setDocuments(prev => prev.map(document => document.id === id ? { ...document, ...updates } : document));
+  };
+
+  const deleteDocument = async (id: string) => {
+    const document = documents.find(item => item.id === id);
+    if (document?.fileUrl?.startsWith('/api/uploads/')) {
+      const response = await fetch(document.fileUrl, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Uploaded file could not be removed from storage.');
+    }
     setDocuments(prev => prev.filter(d => d.id !== id));
     if (selectedDocument?.id === id) {
       setSelectedDocument(null);
@@ -734,6 +744,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addSubject,
         deleteSubject,
         addDocument,
+        updateDocument,
         deleteDocument,
         addMCQ,
         deleteMCQ,
