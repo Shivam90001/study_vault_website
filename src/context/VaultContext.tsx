@@ -643,7 +643,7 @@ export const VaultProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addDocument = (docData: Omit<StudyDocument, 'id' | 'viewsCount' | 'uploadDate'>) => {
     const newDoc: StudyDocument = {
       ...docData,
-      id: `doc-${Date.now()}`,
+      id: `doc-${crypto.randomUUID()}`,
       viewsCount: 1,
       uploadDate: new Date().toISOString().split('T')[0]
     };

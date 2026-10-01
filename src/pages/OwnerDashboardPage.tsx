@@ -100,29 +100,26 @@ export const OwnerDashboardPage: React.FC = () => {
   const [resTitle, setResTitle] = useState('');
   const [resAuthor, setResAuthor] = useState('Verified Faculty');
   const [resFormat, setResFormat] = useState<FileFormat>('pdf');
-  const [resFileSize, setResFileSize] = useState('4.2 MB');
   const [resPages, setResPages] = useState(24);
   const [resSummary, setResSummary] = useState('');
-  const [resFile, setResFile] = useState<File | null>(null);
-  const [resFileMimeType, setResFileMimeType] = useState('');
-  const [resFileName, setResFileName] = useState<string>('');
+  const [resFiles, setResFiles] = useState<File[]>([]);
   const [isUploadingResource, setIsUploadingResource] = useState(false);
   const [resourceAssignmentDrafts, setResourceAssignmentDrafts] = useState<Record<string, { subjectId: string; type: DocumentType }>>({});
   const filePickerRef = useRef<HTMLInputElement>(null);
   const photoPickerRef = useRef<HTMLInputElement>(null);
 
-  // Keep the selected file local until its resource metadata is ready to publish.
+  // Keep selected files local until their shared resource metadata is ready to publish.
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const pickedFiles = Array.from(e.currentTarget.files || []);
+    if (!pickedFiles.length) return;
 
-    setResFile(file);
-    setResFileName(file.name);
-    setResFileMimeType(file.type || 'application/octet-stream');
-    const sizeInMB = (file.size / (1024 * 1024)).toFixed(1);
-    setResFileSize(`${sizeInMB} MB`);
-
-    const extension = file.name.split('.').pop()?.toLowerCase();
+    setResFiles(currentFiles => {
+      const existingFiles = new Set(currentFiles.map(file => `${file.name}:${file.size}:${file.lastModified}`));
+      const newFiles = pickedFiles.filter(file => !existingFiles.has(`${file.name}:${file.size}:${file.lastModified}`));
+      return [...currentFiles, ...newFiles];
+    });
+    const firstFile = pickedFiles[0];
+    const extension = firstFile.name.split('.').pop()?.toLowerCase();
     setResFormat(extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : 'file');
     e.currentTarget.value = '';
   };
@@ -136,57 +133,70 @@ export const OwnerDashboardPage: React.FC = () => {
     }
 
     setIsUploadingResource(true);
+    const filesToPublish: Array<File | null> = resFiles.length ? resFiles : [null];
+    let publishedCount = 0;
     try {
-      let uploadedFile: { fileUrl: string; contentType: string } | undefined;
-      if (resFile) {
-        const response = await fetch('/api/uploads', {
-          method: 'POST',
-          headers: {
-            'Content-Type': resFile.type || 'application/octet-stream',
-            'X-File-Name': encodeURIComponent(resFile.name)
-          },
-          body: resFile
-        });
-        if (!response.ok) {
-          const result = await response.json().catch(() => null) as { error?: string } | null;
-          throw new Error(result?.error || 'File upload failed. Please sign in again and retry.');
-        }
-        uploadedFile = await response.json() as { fileUrl: string; contentType: string };
-      }
-
-      addDocument({
-        title: resTitle,
-        courseId: resCourseId,
-        semesterId: resSemesterId,
-        subjectId: resSubjectId,
-        type: resType,
-        unit: resUnit,
-        fileFormat: resFormat,
-        fileName: resFileName || `${resTitle}.${resFormat}`,
-        fileUrl: uploadedFile?.fileUrl,
-        fileMimeType: uploadedFile?.contentType,
-        fileSize: resFileSize || '3.5 MB',
-        pagesCount: resPages || 15,
-        author: resAuthor || 'StudyVault Faculty',
-        tags: [resType.toUpperCase(), resFormat.toUpperCase(), 'Verified'],
-        summary: resSummary || `${resTitle} official resource uploaded for university preparation.`,
-        previewPages: [
-          {
-            pageNumber: 1,
-            title: `${resTitle} - Overview`,
-            content: [resSummary || 'Protected university notes and study resources.']
+      for (const file of filesToPublish) {
+        let uploadedFile: { fileUrl: string; contentType: string } | undefined;
+        if (file) {
+          const response = await fetch('/api/uploads', {
+            method: 'POST',
+            headers: {
+              'Content-Type': file.type || 'application/octet-stream',
+              'X-File-Name': encodeURIComponent(file.name)
+            },
+            body: file
+          });
+          if (!response.ok) {
+            const result = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(result?.error || `Upload failed for ${file.name}. Please sign in again and retry.`);
           }
-        ]
-      });
+          uploadedFile = await response.json() as { fileUrl: string; contentType: string };
+        }
+
+        const extension = file?.name.split('.').pop()?.toLowerCase();
+        const fileFormat = extension && /^[a-z0-9]{1,12}$/.test(extension) ? extension : resFormat;
+        const fileTitle = file?.name.replace(/\.[^.]+$/, '') || file?.name || resTitle.trim();
+        const title = file && filesToPublish.length > 1 ? `${resTitle.trim()} - ${fileTitle}` : resTitle.trim();
+        addDocument({
+          title,
+          courseId: resCourseId,
+          semesterId: resSemesterId,
+          subjectId: resSubjectId,
+          type: resType,
+          unit: resUnit,
+          fileFormat,
+          fileName: file?.name || `${resTitle}.${fileFormat}`,
+          fileUrl: uploadedFile?.fileUrl,
+          fileMimeType: uploadedFile?.contentType,
+          fileSize: file ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : '3.5 MB',
+          pagesCount: resPages || 15,
+          author: resAuthor || 'StudyVault Faculty',
+          tags: [resType.toUpperCase(), fileFormat.toUpperCase(), 'Verified'],
+          summary: resSummary || `${title} official resource uploaded for university preparation.`,
+          previewPages: [
+            {
+              pageNumber: 1,
+              title: `${title} - Overview`,
+              content: [resSummary || 'Protected university notes and study resources.']
+            }
+          ]
+        });
+        publishedCount += 1;
+        if (file) {
+          setResFiles(currentFiles => currentFiles.filter(selectedFile => selectedFile !== file));
+        }
+      }
 
       setResTitle('');
       setResSummary('');
-      setResFile(null);
-      setResFileName('');
-      setResFileMimeType('');
-      showNotification('Resource uploaded and published for all visitors.');
+      setResFiles([]);
+      showNotification(`${publishedCount} resource${publishedCount === 1 ? '' : 's'} uploaded and published for all visitors.`);
     } catch (error) {
-      showNotification(error instanceof Error ? error.message : 'Resource could not be uploaded.');
+      const message = error instanceof Error ? error.message : 'Resource could not be uploaded.';
+      showNotification(publishedCount
+        ? `${publishedCount} resource${publishedCount === 1 ? '' : 's'} published; remaining selected files are kept. ${message}`
+        : message);
     } finally {
       setIsUploadingResource(false);
     }
@@ -1086,12 +1096,13 @@ export const OwnerDashboardPage: React.FC = () => {
               {/* File Attachment / File Picker */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-dashed border-slate-700 space-y-3">
                 <label className="block text-slate-300 font-bold">
-                  Attach a File or Photo (up to 50 MB)
+                  Attach files or photos (up to 50 MB each)
                 </label>
                 <input
                   type="file"
                   ref={filePickerRef}
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                  multiple
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -1099,6 +1110,7 @@ export const OwnerDashboardPage: React.FC = () => {
                   type="file"
                   ref={photoPickerRef}
                   accept="image/*"
+                  multiple
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -1106,40 +1118,47 @@ export const OwnerDashboardPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => filePickerRef.current?.click()}
+                    disabled={isUploadingResource}
                     className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500"
                   >
                     <FileText className="h-4 w-4" />
-                    Choose file
+                    Choose files
                   </button>
                   <button
                     type="button"
                     onClick={() => photoPickerRef.current?.click()}
+                    disabled={isUploadingResource}
                     className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-700"
                   >
                     <ImageIcon className="h-4 w-4" />
-                    Choose photo from gallery
+                    Choose photos from gallery
                   </button>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  On phones, choose a file or select a photo from your device.
+                  Select multiple photos, PDFs, or supported files. Each selected file is published as a separate resource with the course and subject chosen above.
                 </p>
-                {resFileName && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-emerald-400">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">Selected: <strong>{resFileName}</strong> ({resFileSize}, {resFileMimeType})</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setResFile(null);
-                        setResFileName('');
-                        setResFileMimeType('');
-                      }}
-                      className="text-rose-400 hover:text-rose-300"
-                    >
-                      Remove selected file
-                    </button>
+                {resFiles.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <p className="text-[11px] font-bold text-emerald-400">{resFiles.length} file{resFiles.length === 1 ? '' : 's'} selected</p>
+                    <ul className="space-y-1">
+                      {resFiles.map((file, index) => (
+                        <li key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center justify-between gap-2 text-[11px] text-slate-300">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                            <span className="truncate">{file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)</span>
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${file.name}`}
+                            disabled={isUploadingResource}
+                            onClick={() => setResFiles(currentFiles => currentFiles.filter((_, fileIndex) => fileIndex !== index))}
+                            className="shrink-0 text-rose-400 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>
