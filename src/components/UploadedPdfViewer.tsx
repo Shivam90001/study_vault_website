@@ -11,12 +11,47 @@ interface UploadedPdfViewerProps {
   title: string;
 }
 
+interface PdfRenderBoundaryProps {
+  children: React.ReactNode;
+  fileUrl: string;
+  onRetry: () => void;
+}
+
+class PdfRenderBoundary extends React.Component<PdfRenderBoundaryProps, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center text-sm text-rose-300" role="alert">
+          <p>This PDF could not be rendered. Retry it or open the file separately.</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={this.props.onRetry} className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">
+              Retry PDF
+            </button>
+            <a href={this.props.fileUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-600 px-4 py-2 font-semibold text-white">
+              Open separately
+            </a>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const UploadedPdfViewer: React.FC<UploadedPdfViewerProps> = ({ fileUrl, title }) => {
   const [pageCount, setPageCount] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1);
   const [pageWidth, setPageWidth] = useState(() => Math.min(960, Math.max(240, window.innerWidth - 56)));
   const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [hasDocumentLoaded, setHasDocumentLoaded] = useState(false);
 
   useEffect(() => {
     const updatePageWidth = () => setPageWidth(Math.min(960, Math.max(240, window.innerWidth - 56)));
@@ -29,7 +64,12 @@ const UploadedPdfViewer: React.FC<UploadedPdfViewerProps> = ({ fileUrl, title })
     setPageNumber(1);
     setScale(1);
     setLoadError('');
-  }, [fileUrl]);
+    setHasDocumentLoaded(false);
+    const timeout = window.setTimeout(() => {
+      setLoadError('PDF is taking too long to render. Retry it or open it separately.');
+    }, 15000);
+    return () => window.clearTimeout(timeout);
+  }, [fileUrl, loadAttempt]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
@@ -80,27 +120,48 @@ const UploadedPdfViewer: React.FC<UploadedPdfViewerProps> = ({ fileUrl, title })
       {loadError ? (
         <div className="p-6 text-center text-sm text-rose-300" role="alert">
           <p>{loadError}</p>
-          <a href={fileUrl} target="_blank" rel="noreferrer" className="mt-3 inline-block rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white">
-            Open or download PDF
-          </a>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => setLoadAttempt(attempt => attempt + 1)}
+              className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white"
+            >
+              Retry PDF
+            </button>
+            <a href={fileUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-600 px-4 py-2 font-semibold text-white">
+              Open separately
+            </a>
+          </div>
         </div>
       ) : (
         <div className="max-h-[70vh] overflow-auto bg-slate-700 p-2 sm:p-4">
-          <PdfDocument
-            file={fileUrl}
-            onLoadSuccess={({ numPages }) => setPageCount(numPages)}
-            onLoadError={() => setLoadError('This PDF could not be displayed. Try opening or downloading it directly.')}
-            loading={<p className="p-8 text-center text-sm text-white">Loading PDF...</p>}
-            error={<p className="p-8 text-center text-sm text-rose-300">This PDF could not be displayed.</p>}
+          <PdfRenderBoundary
+            key={`${fileUrl}:${loadAttempt}`}
+            fileUrl={fileUrl}
+            onRetry={() => setLoadAttempt(attempt => attempt + 1)}
           >
-            <Page
-              pageNumber={pageNumber}
-              width={Math.round(pageWidth * scale)}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-              className="mx-auto w-fit shadow-xl"
-            />
-          </PdfDocument>
+            <PdfDocument
+              file={fileUrl}
+              onSourceError={() => setLoadError('The PDF file could not be reached. Check the connection and retry.')}
+              onLoadSuccess={({ numPages }) => {
+                setPageCount(numPages);
+                setHasDocumentLoaded(true);
+              }}
+              onLoadError={() => setLoadError('The PDF file could not be read. Retry it or open it separately.')}
+              loading={<p className="p-8 text-center text-sm text-white">{hasDocumentLoaded ? 'Rendering PDF page...' : 'Loading PDF...'}</p>}
+              error={<p className="p-8 text-center text-sm text-rose-300">The PDF file could not be read.</p>}
+            >
+              <Page
+                pageNumber={pageNumber}
+                width={Math.round(pageWidth * scale)}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                className="mx-auto w-fit shadow-xl"
+                onRenderError={() => setLoadError('This PDF page could not be rendered. Retry it or open it separately.')}
+                onRenderSuccess={() => setLoadError('')}
+              />
+            </PdfDocument>
+          </PdfRenderBoundary>
         </div>
       )}
       <div className="sr-only">{title}</div>
