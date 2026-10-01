@@ -35,11 +35,9 @@ export const DocumentViewer: React.FC = () => {
   const [fontSize, setFontSize] = useState<number>(15);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
 
   useEffect(() => {
     setActivePageIndex(0);
-    setActiveAttachmentIndex(0);
   }, [selectedDocument?.id]);
 
   if (!selectedDocument) return null;
@@ -57,16 +55,6 @@ export const DocumentViewer: React.FC = () => {
         fileSize: doc.fileSize
       }]
       : [];
-  const activeAttachment = uploadedAttachments[activeAttachmentIndex] || uploadedAttachments[0];
-  const activeFileFormat = activeAttachment?.fileFormat || doc.fileFormat;
-  const activeMimeType = activeAttachment?.fileMimeType || doc.fileMimeType;
-  const uploadedFileUrl = activeAttachment?.fileUrl || doc.fileDataUrl;
-  const isUploadedImage = Boolean(uploadedFileUrl && (activeMimeType?.startsWith('image/')
-    ? activeMimeType !== 'image/svg+xml'
-    : ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(activeFileFormat.toLowerCase())));
-  const isUploadedPdf = Boolean(activeAttachment && (activeMimeType === 'application/pdf'
-    || activeFileFormat.toLowerCase() === 'pdf'
-    || activeAttachment.fileName.toLowerCase().endsWith('.pdf')));
   const pages = doc.previewPages && doc.previewPages.length > 0 ? doc.previewPages : [
     {
       pageNumber: 1,
@@ -117,7 +105,9 @@ export const DocumentViewer: React.FC = () => {
               <div className="flex items-center gap-2 text-[11px] text-slate-400">
                 <span className="uppercase text-indigo-400 font-semibold">{doc.type}</span>
                 <span>•</span>
-                <span className="uppercase font-mono text-[10px] text-emerald-400 font-bold">{activeFileFormat}</span>
+                <span className="uppercase font-mono text-[10px] text-emerald-400 font-bold">
+                  {uploadedAttachments.length > 1 ? `${uploadedAttachments.length} files` : uploadedAttachments[0]?.fileFormat || doc.fileFormat}
+                </span>
                 <span>•</span>
                 <span>{uploadedAttachments.length > 1 ? `${uploadedAttachments.length} Files` : `${doc.pagesCount} Pages`}</span>
                 <span>•</span>
@@ -251,29 +241,50 @@ export const DocumentViewer: React.FC = () => {
             </div>
           </div>
 
-          {/* If Custom Uploaded File / Image */}
-          {activeAttachment && isUploadedImage ? (
-            <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
-              <img 
-                src={activeAttachment.fileUrl}
-                alt={activeAttachment.fileName}
-                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none select-none"
-                draggable={false}
-                onContextMenu={event => event.preventDefault()}
-              />
-              <p className="text-xs text-slate-400 mt-4 leading-relaxed max-w-2xl mx-auto">
-                {doc.summary}
-              </p>
-            </div>
-          ) : activeAttachment && isUploadedPdf ? (
-            <Suspense fallback={<p className="p-8 text-center text-sm text-slate-300">Loading PDF viewer...</p>}>
-              <UploadedPdfViewer fileUrl={activeAttachment.fileUrl} title={activeAttachment.fileName} />
-            </Suspense>
-          ) : activeAttachment ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
-              <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
-              <p className="mb-4 text-sm font-semibold text-white">{activeAttachment.fileName}</p>
-              <p className="text-sm text-slate-400">This file type cannot be previewed on the website. Downloads are disabled.</p>
+          {/* Show every uploaded attachment in the grouped resource. */}
+          {uploadedAttachments.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {uploadedAttachments.map((attachment, index) => {
+                const format = attachment.fileFormat.toLowerCase();
+                const isImage = attachment.fileMimeType.startsWith('image/')
+                  ? attachment.fileMimeType !== 'image/svg+xml'
+                  : ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(format);
+                const isPdf = attachment.fileMimeType === 'application/pdf'
+                  || format === 'pdf'
+                  || attachment.fileName.toLowerCase().endsWith('.pdf');
+
+                return (
+                  <section
+                    key={`${attachment.fileUrl}:${index}`}
+                    className={`min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 ${isImage ? '' : 'sm:col-span-2'}`}
+                  >
+                    <h3 className="truncate border-b border-slate-800 px-4 py-3 text-sm font-semibold text-white" title={attachment.fileName}>
+                      {attachment.fileName}
+                    </h3>
+                    {isImage ? (
+                      <div className="p-3 text-center">
+                        <img
+                          src={attachment.fileUrl}
+                          alt={attachment.fileName}
+                          className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none select-none"
+                          draggable={false}
+                          onContextMenu={event => event.preventDefault()}
+                        />
+                      </div>
+                    ) : isPdf ? (
+                      <Suspense fallback={<p className="p-8 text-center text-sm text-slate-300">Loading PDF viewer...</p>}>
+                        <UploadedPdfViewer fileUrl={attachment.fileUrl} title={attachment.fileName} />
+                      </Suspense>
+                    ) : (
+                      <div className="p-8 text-center">
+                        <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
+                        <p className="text-sm text-slate-400">This file type cannot be previewed on the website. Downloads are disabled.</p>
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+              <p className="text-xs leading-relaxed text-slate-400 sm:col-span-2">{doc.summary}</p>
             </div>
           ) : (doc.type === 'photo' || doc.fileFormat === 'jpg' || doc.fileFormat === 'png') && (doc.imageUrl || doc.fileDataUrl) ? (
             <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
@@ -317,40 +328,6 @@ export const DocumentViewer: React.FC = () => {
                     Exam Formula / Key Result:
                   </span>
                   <span className="text-white font-semibold">{currentPage.formula}</span>
-                </div>
-              )}
-
-              {uploadedAttachments.length > 1 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3">
-                  <button
-                    type="button"
-                    disabled={activeAttachmentIndex === 0}
-                    onClick={() => setActiveAttachmentIndex(index => Math.max(0, index - 1))}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronLeft className="h-4 w-4" /> Previous file
-                  </button>
-                  <label className="min-w-0 flex-1 text-center text-xs text-slate-300">
-                    <span className="mr-2 text-slate-500">{activeAttachmentIndex + 1} of {uploadedAttachments.length}</span>
-                    <select
-                      aria-label="Choose attached file to view"
-                      value={activeAttachmentIndex}
-                      onChange={event => setActiveAttachmentIndex(Number(event.target.value))}
-                      className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5 text-white"
-                    >
-                      {uploadedAttachments.map((attachment, index) => (
-                        <option key={`${attachment.fileUrl}:${index}`} value={index}>{attachment.fileName}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    disabled={activeAttachmentIndex === uploadedAttachments.length - 1}
-                    onClick={() => setActiveAttachmentIndex(index => Math.min(uploadedAttachments.length - 1, index + 1))}
-                    className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Next file <ChevronRight className="h-4 w-4" />
-                  </button>
                 </div>
               )}
 
