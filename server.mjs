@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,10 @@ function hashPassword(password, salt = randomBytes(16).toString('hex')) {
     salt,
     hash: scryptSync(password, salt, 64).toString('hex')
   };
+}
+
+function hasPdfHeader(buffer) {
+  return buffer.subarray(0, 1024).toString('latin1').includes('%PDF-');
 }
 
 function createDefaultStore() {
@@ -246,7 +250,7 @@ app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '100mb'
 
     const contentType = request.get('Content-Type') || 'application/octet-stream';
     const reportedContentType = /^[\w.+-]+\/[\w.+-]+$/.test(contentType) ? contentType : 'application/octet-stream';
-    const safeContentType = request.body.subarray(0, 5).toString() === '%PDF-'
+    const safeContentType = hasPdfHeader(request.body)
       ? 'application/pdf'
       : reportedContentType;
     const id = randomUUID();
@@ -271,13 +275,26 @@ app.get('/api/uploads/:id', async (request, response, next) => {
     }
 
     const uploadDirectory = path.join(dataDirectory, 'uploads');
+    const storedFile = path.join(uploadDirectory, `${request.params.id}.blob`);
     const metadata = JSON.parse(await readFile(path.join(uploadDirectory, `${request.params.id}.json`), 'utf8'));
-    const contentType = /^[\w.+-]+\/[\w.+-]+$/.test(metadata.contentType) ? metadata.contentType : 'application/octet-stream';
+    const fileHandle = await open(storedFile, 'r');
+    let fileHeader;
+    try {
+      fileHeader = Buffer.alloc(1024);
+      const { bytesRead } = await fileHandle.read(fileHeader, 0, fileHeader.length, 0);
+      fileHeader = fileHeader.subarray(0, bytesRead);
+    } finally {
+      await fileHandle.close();
+    }
+    const detectedPdf = hasPdfHeader(fileHeader);
+    const contentType = detectedPdf
+      ? 'application/pdf'
+      : /^[\w.+-]+\/[\w.+-]+$/.test(metadata.contentType) ? metadata.contentType : 'application/octet-stream';
     const inlineTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp']);
     response.set('X-Content-Type-Options', 'nosniff');
     response.set('Content-Type', contentType);
     response.set('Content-Disposition', inlineTypes.has(contentType) ? 'inline' : 'attachment');
-    response.sendFile(path.join(uploadDirectory, `${request.params.id}.blob`));
+    response.sendFile(storedFile);
   } catch (error) {
     if (error.code === 'ENOENT') {
       response.status(404).end();

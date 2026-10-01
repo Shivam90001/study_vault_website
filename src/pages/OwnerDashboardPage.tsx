@@ -1275,10 +1275,12 @@ export const OwnerDashboardPage: React.FC = () => {
                                 }
                               }
                             }}
-                            className="p-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 cursor-pointer"
-                            title="Delete"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-950/40 px-2 py-1.5 text-rose-400 hover:bg-rose-900/60 cursor-pointer"
+                            title="Delete resource and uploaded file"
+                            aria-label={`Delete ${doc.title} and its uploaded file`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
                           </button>
                         </td>
                       </tr>

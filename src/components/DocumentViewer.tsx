@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { 
   X, 
   Bookmark, 
@@ -18,6 +18,7 @@ import {
   FileCheck
 } from 'lucide-react';
 import { useVault } from '../context/VaultContext';
+const UploadedPdfViewer = lazy(() => import('./UploadedPdfViewer'));
 
 export const DocumentViewer: React.FC = () => {
   const { 
@@ -43,7 +44,9 @@ export const DocumentViewer: React.FC = () => {
   const isUploadedImage = Boolean(uploadedFileUrl && (doc.fileMimeType?.startsWith('image/')
     ? doc.fileMimeType !== 'image/svg+xml'
     : doc.fileFormat === 'jpg' || doc.fileFormat === 'jpeg' || doc.fileFormat === 'png'));
-  const isUploadedPdf = Boolean(doc.fileUrl && (doc.fileMimeType === 'application/pdf' || doc.fileFormat === 'pdf'));
+  const isUploadedPdf = Boolean(doc.fileUrl && (doc.fileMimeType === 'application/pdf'
+    || doc.fileFormat === 'pdf'
+    || doc.fileName?.toLowerCase().endsWith('.pdf')));
   const pages = doc.previewPages && doc.previewPages.length > 0 ? doc.previewPages : [
     {
       pageNumber: 1,
@@ -106,10 +109,10 @@ export const DocumentViewer: React.FC = () => {
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
             {doc.type !== 'photo' && (
               <>
-                <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
+                <div className="flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 text-xs">
                   <button
                     onClick={() => setReadingTheme('dark')}
                     className={`px-2 py-1 rounded cursor-pointer ${readingTheme === 'dark' ? 'bg-slate-900 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
@@ -130,7 +133,7 @@ export const DocumentViewer: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-xs text-slate-300">
+                <div className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded-lg border border-slate-700 text-xs text-slate-300">
                   <button 
                     onClick={() => setFontSize(prev => Math.max(12, prev - 1))}
                     className="hover:text-white cursor-pointer px-1"
@@ -170,8 +173,9 @@ export const DocumentViewer: React.FC = () => {
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer hidden md:block"
+              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 cursor-pointer"
               title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
@@ -240,21 +244,9 @@ export const DocumentViewer: React.FC = () => {
               </p>
             </div>
           ) : doc.fileUrl && isUploadedPdf ? (
-            <div className="space-y-3">
-              <a
-                href={doc.fileUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-500"
-              >
-                Open PDF in new tab
-              </a>
-              <iframe
-                src={doc.fileUrl}
-                title={doc.title}
-                className="h-[70vh] min-h-96 w-full rounded-2xl border border-slate-800 bg-white"
-              />
-            </div>
+            <Suspense fallback={<p className="p-8 text-center text-sm text-slate-300">Loading PDF viewer...</p>}>
+              <UploadedPdfViewer fileUrl={doc.fileUrl} title={doc.title} />
+            </Suspense>
           ) : doc.fileUrl ? (
             <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
               <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
