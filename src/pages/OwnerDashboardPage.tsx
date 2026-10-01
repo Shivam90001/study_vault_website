@@ -30,8 +30,6 @@ import {
   TrendingUp,
   Flame,
   Bell,
-  Download,
-  Archive,
   ChevronDown
 } from 'lucide-react';
 import { useVault } from '../context/VaultContext';
@@ -433,16 +431,6 @@ export const OwnerDashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <a
-            href="/studyvault-complete-website.zip"
-            download="studyvault-complete-website.zip"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-indigo-600/20"
-            title="Download complete website source code as ZIP file"
-          >
-            <Archive className="w-3.5 h-3.5" />
-            <span>Download ZIP</span>
-          </a>
-
           <button
             onClick={() => navigateTo({ view: 'courses' })}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
@@ -922,29 +910,6 @@ export const OwnerDashboardPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Download Complete Website ZIP Box */}
-          <div className="bg-gradient-to-r from-purple-950/40 via-indigo-950/40 to-slate-900 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-indigo-400 font-bold">
-                  <Archive className="w-5 h-5" />
-                  <span className="text-base text-white font-extrabold">Complete Website Codebase (.ZIP)</span>
-                </div>
-                <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-                  Download the complete standalone source code archive of StudyVault with all components, data models, syllabus, PYQs, MCQs, and styles ready to deploy or edit in VS Code.
-                </p>
-              </div>
-
-              <a
-                href="/studyvault-complete-website.zip"
-                download="studyvault-complete-website.zip"
-                className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-xs px-6 py-3 rounded-2xl shadow-xl shadow-indigo-600/30 transition-all active:scale-95 cursor-pointer shrink-0"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Website ZIP (82 KB)</span>
-              </a>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1233,37 +1198,54 @@ export const OwnerDashboardPage: React.FC = () => {
                 <h3 className="text-base font-bold text-white">
                   Existing Study Materials ({documents.length})
                 </h3>
-                <p className="mt-1 text-[11px] text-slate-400">Download a separate copy of your site data and uploaded files.</p>
+                <p className="mt-1 text-[11px] text-slate-400">Manage resources shown in the website viewer.</p>
               </div>
-              <a
-                href="/api/owner/backup"
-                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600/15 px-3 py-2 text-xs font-bold text-indigo-200 hover:bg-indigo-600/25"
-              >
-                <Download className="h-4 w-4" />
-                Download full backup
-              </a>
-              <div className="relative w-full sm:w-64">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  value={searchDocTerm}
-                  onChange={(e) => setSearchDocTerm(e.target.value)}
-                  placeholder="Search resources..."
-                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white"
-                />
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchDocTerm}
+                    onChange={(e) => setSearchDocTerm(e.target.value)}
+                    placeholder="Search resources..."
+                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white"
+                  />
+                </div>
+                {allVisibleUploadsSelected ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUploadIds(current => {
+                      const next = new Set(current);
+                      filteredUploads.forEach(document => next.delete(document.id));
+                      return next;
+                    })}
+                    disabled={isDeletingUploads}
+                    className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    Clear selection
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUploadIds(current => new Set([...current, ...filteredUploads.map(document => document.id)]))}
+                    disabled={!filteredUploads.length || isDeletingUploads}
+                    className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Select visible files
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedUploads}
+                  disabled={!selectedUploadIds.size || isDeletingUploads}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-950/50 px-3 py-2 text-xs font-bold text-rose-300 hover:bg-rose-900/70 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {isDeletingUploads ? 'Removing...' : `Remove selected (${selectedUploadIds.size})`}
+                </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={() => setSelectedUploadIds(current => {
-                const next = new Set(current);
-                filteredUploads.forEach(document => next.delete(document.id));
-                return allVisibleUploadsSelected ? next : new Set([...next, ...filteredUploads.map(document => document.id)]);
-              })} disabled={!filteredUploads.length || isDeletingUploads} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 disabled:opacity-50">
-                {allVisibleUploadsSelected ? 'Clear selection' : 'Select visible files'}
-              </button>
-              <button type="button" onClick={handleDeleteSelectedUploads} disabled={!selectedUploadIds.size || isDeletingUploads} className="rounded-xl bg-rose-950/50 px-3 py-2 text-xs font-bold text-rose-300 disabled:opacity-50">Remove selected files ({selectedUploadIds.size})</button>
-            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-[11px] text-slate-400 uppercase tracking-wider border-b border-slate-800">
@@ -1387,12 +1369,18 @@ export const OwnerDashboardPage: React.FC = () => {
                               if (confirm(`Remove "${doc.title}"?`)) {
                                 try {
                                   await deleteDocument(doc.id);
+                                  setSelectedUploadIds(current => {
+                                    const next = new Set(current);
+                                    next.delete(doc.id);
+                                    return next;
+                                  });
                                   showNotification('Resource and uploaded file removed.');
                                 } catch (error) {
                                   showNotification(error instanceof Error ? error.message : 'Resource could not be removed.');
                                 }
                               }
                             }}
+                            disabled={isDeletingUploads}
                             className="inline-flex items-center gap-1.5 rounded-lg bg-rose-950/40 px-2 py-1.5 text-rose-400 hover:bg-rose-900/60 cursor-pointer"
                             title="Delete resource and uploaded file"
                             aria-label={`Delete ${doc.title} and its uploaded file`}

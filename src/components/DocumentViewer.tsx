@@ -237,7 +237,9 @@ export const DocumentViewer: React.FC = () => {
               <img 
                 src={doc.fileUrl}
                 alt={doc.title} 
-                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none"
+                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none select-none"
+                draggable={false}
+                onContextMenu={event => event.preventDefault()}
               />
               <p className="text-xs text-slate-400 mt-4 leading-relaxed max-w-2xl mx-auto">
                 {doc.summary}
@@ -251,17 +253,16 @@ export const DocumentViewer: React.FC = () => {
             <div className="rounded-2xl border border-slate-800 bg-slate-950 p-8 text-center">
               <FileText className="mx-auto mb-3 h-8 w-8 text-indigo-400" />
               <p className="mb-4 text-sm font-semibold text-white">{doc.fileName || doc.title}</p>
-              <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-                Open file
-              </a>
-              <p className="mt-4 text-xs text-slate-400">This file type may open or download depending on your device.</p>
+              <p className="text-sm text-slate-400">This file type cannot be previewed on the website. Downloads are disabled.</p>
             </div>
           ) : (doc.type === 'photo' || doc.fileFormat === 'jpg' || doc.fileFormat === 'png') && (doc.imageUrl || doc.fileDataUrl) ? (
             <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 p-4 text-center">
               <img
                 src={doc.fileDataUrl || doc.imageUrl}
                 alt={doc.title}
-                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none"
+                className="max-h-[65vh] w-auto mx-auto rounded-xl object-contain shadow-2xl pointer-events-none select-none"
+                draggable={false}
+                onContextMenu={event => event.preventDefault()}
               />
               <p className="text-xs text-slate-400 mt-4 leading-relaxed max-w-2xl mx-auto">{doc.summary}</p>
             </div>

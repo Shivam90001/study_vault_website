@@ -1,13 +1,10 @@
 import 'dotenv/config';
-import { ZipArchive } from 'archiver';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Readable } from 'node:stream';
 import express from 'express';
 import { createClient } from '@supabase/supabase-js';
 
@@ -285,75 +282,6 @@ app.get('/api/content', async (request, response, next) => {
   }
 });
 
-app.get('/api/owner/backup', requireOwner, async (request, response, next) => {
-  let archive;
-  try {
-    const store = await loadStore();
-    const content = store.content || {};
-    const uploadEntries = [];
-
-    for (const document of content.documents || []) {
-      const match = document.fileUrl?.match(/^\/api\/uploads\/([\da-f-]{36})$/i);
-      if (!match) continue;
-
-      const id = match[1];
-      let metadataBytes;
-      if (supabaseBucket) {
-        const { data, error } = await supabaseBucket.download(`uploads/${id}.json`);
-        if (error) throw new Error(`Could not include "${document.title}" in the backup: ${error.message}`, { cause: error });
-        metadataBytes = Buffer.from(await data.arrayBuffer());
-      } else {
-        metadataBytes = await readFile(path.join(dataDirectory, 'uploads', `${id}.json`));
-      }
-
-      const metadata = JSON.parse(metadataBytes.toString('utf8'));
-      const originalName = path.basename(String(metadata.fileName || document.fileName || 'file').replaceAll('\\', '/'));
-      const safeName = originalName.replace(/[^\w.-]+/g, '_').slice(0, 180) || 'file';
-      uploadEntries.push({
-        documentId: document.id,
-        title: document.title,
-        fileName: originalName,
-        contentType: metadata.contentType || document.fileMimeType || 'application/octet-stream',
-        archivePath: `uploads/${id}/${safeName}`,
-        id
-      });
-    }
-
-    const backup = {
-      schemaVersion: 1,
-      createdAt: new Date().toISOString(),
-      content,
-      uploads: uploadEntries.map(({ id, ...entry }) => entry)
-    };
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    archive = new ZipArchive({ zlib: { level: 1 } });
-    archive.on('error', error => response.destroy(error));
-    archive.on('warning', error => response.destroy(error));
-    response.attachment(`studyvault-backup-${timestamp}.zip`);
-    archive.pipe(response);
-    archive.append(JSON.stringify(backup, null, 2), { name: 'studyvault-backup.json' });
-
-    for (const entry of uploadEntries) {
-      if (supabaseBucket) {
-        const { data, error } = await supabaseBucket.download(`uploads/${entry.id}.blob`);
-        if (error) throw new Error(`Could not include "${entry.title}" in the backup: ${error.message}`, { cause: error });
-        archive.append(Readable.fromWeb(data.stream()), { name: entry.archivePath });
-      } else {
-        archive.file(path.join(dataDirectory, 'uploads', `${entry.id}.blob`), { name: entry.archivePath });
-      }
-    }
-
-    await archive.finalize();
-  } catch (error) {
-    if (response.headersSent) {
-      archive?.destroy(error);
-      response.destroy(error);
-      return;
-    }
-    next(error);
-  }
-});
-
 app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '50mb' }), async (request, response, next) => {
   try {
     if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
@@ -415,7 +343,6 @@ app.get('/api/uploads/:id', async (request, response, next) => {
 
     let metadataBytes;
     let fileBuffer;
-    let storedFile;
     if (supabaseBucket) {
       const [metadataResult, fileResult] = await Promise.all([
         supabaseBucket.download(`uploads/${request.params.id}.json`),
@@ -431,9 +358,8 @@ app.get('/api/uploads/:id', async (request, response, next) => {
       fileBuffer = Buffer.from(await fileResult.data.arrayBuffer());
     } else {
       const uploadDirectory = path.join(dataDirectory, 'uploads');
-      storedFile = path.join(uploadDirectory, `${request.params.id}.blob`);
       metadataBytes = await readFile(path.join(uploadDirectory, `${request.params.id}.json`));
-      fileBuffer = await readFile(storedFile);
+      fileBuffer = await readFile(path.join(uploadDirectory, `${request.params.id}.blob`));
     }
     const metadata = JSON.parse(metadataBytes.toString('utf8'));
     const fileHeader = fileBuffer.subarray(0, 1024);
@@ -443,14 +369,36 @@ app.get('/api/uploads/:id', async (request, response, next) => {
       : /^[\w.+-]+\/[\w.+-]+$/.test(metadata.contentType) ? metadata.contentType : 'application/octet-stream';
     const inlineTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif', 'image/bmp']);
     response.set('X-Content-Type-Options', 'nosniff');
-    response.set('Content-Type', contentType);
-    response.set('Content-Disposition', inlineTypes.has(contentType) ? 'inline' : 'attachment');
-    if (supabaseBucket) {
-      response.set('Content-Length', String(fileBuffer.length));
-      response.end(fileBuffer);
-    } else {
-      response.sendFile(storedFile);
+    if (!inlineTypes.has(contentType)) {
+      response.status(415).type('text/plain').send('This file type cannot be previewed. Downloads are disabled.');
+      return;
     }
+    response.set('Content-Type', contentType);
+    response.set('Content-Disposition', 'inline');
+    response.set('Accept-Ranges', 'bytes');
+    const rangeHeader = request.get('Range');
+    const rangeMatch = rangeHeader?.match(/^bytes=(\d*)-(\d*)$/);
+    if (rangeMatch) {
+      const [, startText, endText] = rangeMatch;
+      const suffixLength = Number(endText);
+      const start = startText
+        ? Number(startText)
+        : endText && suffixLength > 0 ? Math.max(0, fileBuffer.length - suffixLength) : Number.NaN;
+      const end = startText && endText ? Math.min(Number(endText), fileBuffer.length - 1) : fileBuffer.length - 1;
+      if (!fileBuffer.length || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= fileBuffer.length || end < start) {
+        response.status(416).set('Content-Range', `bytes */${fileBuffer.length}`).end();
+        return;
+      }
+      const rangedFile = fileBuffer.subarray(start, end + 1);
+      response.status(206);
+      response.set('Content-Range', `bytes ${start}-${end}/${fileBuffer.length}`);
+      response.set('Content-Length', String(rangedFile.length));
+      response.end(rangedFile);
+      return;
+    }
+
+    response.set('Content-Length', String(fileBuffer.length));
+    response.end(fileBuffer);
   } catch (error) {
     if (error.code === 'ENOENT') {
       response.status(404).end();
