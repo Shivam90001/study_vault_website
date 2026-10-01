@@ -65,11 +65,16 @@ const UploadedPdfViewer: React.FC<UploadedPdfViewerProps> = ({ fileUrl, title })
     setScale(1);
     setLoadError('');
     setHasDocumentLoaded(false);
-    const timeout = window.setTimeout(() => {
-      setLoadError('PDF is taking too long to render. Retry it or open it separately.');
-    }, 15000);
-    return () => window.clearTimeout(timeout);
   }, [fileUrl, loadAttempt]);
+
+  useEffect(() => {
+    if (hasDocumentLoaded) return;
+
+    const timeout = window.setTimeout(() => {
+      setLoadError('PDF is taking too long to load. Retry it or open it separately.');
+    }, 60000);
+    return () => window.clearTimeout(timeout);
+  }, [fileUrl, loadAttempt, hasDocumentLoaded]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">

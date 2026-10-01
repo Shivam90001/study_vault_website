@@ -23,6 +23,3 @@ Paid Render web services can instead use a persistent disk mounted at `/var/data
 If the disk uses a different mount path, set `DATA_DIR` to a writable directory on that disk (for example, `/mnt/data/studyvault`). Do not set `DATA_DIR` to the disk mount's parent or to a directory that the service cannot write to.
 
 When neither Supabase nor a writable persistent disk is configured, the server may use temporary storage and logs a warning. Content, uploads, and analytics there can be lost on restart or redeploy. Uploaded files are stored outside GitHub.
-
-
-
