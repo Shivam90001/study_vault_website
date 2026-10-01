@@ -1086,7 +1086,7 @@ export const OwnerDashboardPage: React.FC = () => {
               {/* File Attachment / File Picker */}
               <div className="p-4 rounded-2xl bg-slate-950 border border-dashed border-slate-700 space-y-3">
                 <label className="block text-slate-300 font-bold">
-                  Attach a File or Photo (up to 100 MB)
+                  Attach a File or Photo (up to 50 MB)
                 </label>
                 <input
                   type="file"

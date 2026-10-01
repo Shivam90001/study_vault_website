@@ -1,18 +1,31 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import { createHash, randomBytes, randomUUID, scryptSync, createHmac, timingSafeEqual } from 'node:crypto';
-import { mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { createClient } from '@supabase/supabase-js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const defaultDataDirectory = process.env.RENDER === 'true'
   ? path.join('/var/data', 'studyvault')
   : path.join(root, '.studyvault-data');
+const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, '');
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseBucketName = process.env.SUPABASE_STORAGE_BUCKET || 'studyvault';
+if (Boolean(supabaseUrl) !== Boolean(supabaseSecretKey)) {
+  throw new Error('Configure both SUPABASE_URL and SUPABASE_SECRET_KEY to enable persistent Supabase storage.');
+}
+const supabaseClient = supabaseUrl && supabaseSecretKey
+  ? createClient(supabaseUrl, supabaseSecretKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
+const supabaseBucket = supabaseClient?.storage.from(supabaseBucketName) || null;
+const supabaseStorePath = 'system/store.json';
 let dataDirectory = process.env.DATA_DIR || defaultDataDirectory;
 let dataFile = path.join(dataDirectory, 'analytics.json');
+let supabaseStoreCache = null;
 const isProduction = process.env.NODE_ENV === 'production';
 const serveBuiltFiles = isProduction || process.argv.includes('--preview');
 const sessionSecret = process.env.SESSION_SECRET || randomBytes(32).toString('hex');
@@ -87,6 +100,24 @@ function getAnalyticsTotals(store) {
 }
 
 async function loadStore() {
+  if (supabaseBucket) {
+    if (supabaseStoreCache) return structuredClone(supabaseStoreCache);
+
+    const { data, error } = await supabaseBucket.download(supabaseStorePath);
+    if (error) {
+      if (error.statusCode === '404' || error.statusCode === 404 || error.message.toLowerCase().includes('not found')) {
+        supabaseStoreCache = structuredClone(defaultStore);
+        return structuredClone(supabaseStoreCache);
+      }
+      throw new Error(`Could not load shared data from Supabase Storage: ${error.message}`, { cause: error });
+    }
+
+    const store = JSON.parse(await data.text());
+    getAnalyticsTotals(store);
+    supabaseStoreCache = store;
+    return structuredClone(store);
+  }
+
   try {
     const store = JSON.parse(await readFile(dataFile, 'utf8'));
     getAnalyticsTotals(store);
@@ -98,6 +129,16 @@ async function loadStore() {
 }
 
 async function saveStore(store) {
+  if (supabaseBucket) {
+    const { error } = await supabaseBucket.upload(supabaseStorePath, JSON.stringify(store), {
+      contentType: 'application/json',
+      upsert: true
+    });
+    if (error) throw new Error(`Could not save shared data to Supabase Storage: ${error.message}`, { cause: error });
+    supabaseStoreCache = structuredClone(store);
+    return;
+  }
+
   await mkdir(dataDirectory, { recursive: true });
   const temporaryFile = `${dataFile}.${randomUUID()}.tmp`;
   await writeFile(temporaryFile, JSON.stringify(store), { mode: 0o600 });
@@ -112,6 +153,15 @@ async function verifyWritableDirectory(directory) {
 }
 
 async function prepareDataDirectory() {
+  if (supabaseBucket) {
+    const { error } = await supabaseClient.storage.getBucket(supabaseBucketName);
+    if (error) {
+      throw new Error(`Supabase Storage bucket "${supabaseBucketName}" is unavailable. Create a private bucket with this name and check the server secret key.`, { cause: error });
+    }
+    console.log(`Using Supabase Storage bucket "${supabaseBucketName}" for uploads and shared data.`);
+    return;
+  }
+
   try {
     await verifyWritableDirectory(dataDirectory);
   } catch (error) {
@@ -232,7 +282,7 @@ app.get('/api/content', async (request, response, next) => {
   }
 });
 
-app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '100mb' }), async (request, response, next) => {
+app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '50mb' }), async (request, response, next) => {
   try {
     if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
       response.status(400).json({ error: 'Choose a non-empty file to upload.' });
@@ -254,12 +304,29 @@ app.post('/api/uploads', requireOwner, express.raw({ type: '*/*', limit: '100mb'
       ? 'application/pdf'
       : reportedContentType;
     const id = randomUUID();
-    const uploadDirectory = path.join(dataDirectory, 'uploads');
-    const storedFile = path.join(uploadDirectory, `${id}.blob`);
-
-    await mkdir(uploadDirectory, { recursive: true });
-    await writeFile(storedFile, request.body, { flag: 'wx', mode: 0o600 });
-    await writeFile(path.join(uploadDirectory, `${id}.json`), JSON.stringify({ contentType: safeContentType, fileName: originalName }));
+    const metadata = Buffer.from(JSON.stringify({ contentType: safeContentType, fileName: originalName }));
+    if (supabaseBucket) {
+      const blobPath = `uploads/${id}.blob`;
+      const metadataPath = `uploads/${id}.json`;
+      const { error: uploadError } = await supabaseBucket.upload(blobPath, request.body, {
+        contentType: safeContentType,
+        upsert: false
+      });
+      if (uploadError) throw new Error(`File could not be stored in Supabase: ${uploadError.message}`, { cause: uploadError });
+      const { error: metadataError } = await supabaseBucket.upload(metadataPath, metadata, {
+        contentType: 'application/json',
+        upsert: false
+      });
+      if (metadataError) {
+        await supabaseBucket.remove([blobPath]);
+        throw new Error(`File metadata could not be stored in Supabase: ${metadataError.message}`, { cause: metadataError });
+      }
+    } else {
+      const uploadDirectory = path.join(dataDirectory, 'uploads');
+      await mkdir(uploadDirectory, { recursive: true });
+      await writeFile(path.join(uploadDirectory, `${id}.blob`), request.body, { flag: 'wx', mode: 0o600 });
+      await writeFile(path.join(uploadDirectory, `${id}.json`), metadata);
+    }
 
     response.status(201).json({ fileUrl: `/api/uploads/${id}`, contentType: safeContentType });
   } catch (error) {
@@ -274,18 +341,30 @@ app.get('/api/uploads/:id', async (request, response, next) => {
       return;
     }
 
-    const uploadDirectory = path.join(dataDirectory, 'uploads');
-    const storedFile = path.join(uploadDirectory, `${request.params.id}.blob`);
-    const metadata = JSON.parse(await readFile(path.join(uploadDirectory, `${request.params.id}.json`), 'utf8'));
-    const fileHandle = await open(storedFile, 'r');
-    let fileHeader;
-    try {
-      fileHeader = Buffer.alloc(1024);
-      const { bytesRead } = await fileHandle.read(fileHeader, 0, fileHeader.length, 0);
-      fileHeader = fileHeader.subarray(0, bytesRead);
-    } finally {
-      await fileHandle.close();
+    let metadataBytes;
+    let fileBuffer;
+    let storedFile;
+    if (supabaseBucket) {
+      const [metadataResult, fileResult] = await Promise.all([
+        supabaseBucket.download(`uploads/${request.params.id}.json`),
+        supabaseBucket.download(`uploads/${request.params.id}.blob`)
+      ]);
+      if (metadataResult.error?.statusCode === '404' || fileResult.error?.statusCode === '404') {
+        response.status(404).end();
+        return;
+      }
+      if (metadataResult.error) throw metadataResult.error;
+      if (fileResult.error) throw fileResult.error;
+      metadataBytes = Buffer.from(await metadataResult.data.arrayBuffer());
+      fileBuffer = Buffer.from(await fileResult.data.arrayBuffer());
+    } else {
+      const uploadDirectory = path.join(dataDirectory, 'uploads');
+      storedFile = path.join(uploadDirectory, `${request.params.id}.blob`);
+      metadataBytes = await readFile(path.join(uploadDirectory, `${request.params.id}.json`));
+      fileBuffer = await readFile(storedFile);
     }
+    const metadata = JSON.parse(metadataBytes.toString('utf8'));
+    const fileHeader = fileBuffer.subarray(0, 1024);
     const detectedPdf = hasPdfHeader(fileHeader);
     const contentType = detectedPdf
       ? 'application/pdf'
@@ -294,7 +373,12 @@ app.get('/api/uploads/:id', async (request, response, next) => {
     response.set('X-Content-Type-Options', 'nosniff');
     response.set('Content-Type', contentType);
     response.set('Content-Disposition', inlineTypes.has(contentType) ? 'inline' : 'attachment');
-    response.sendFile(storedFile);
+    if (supabaseBucket) {
+      response.set('Content-Length', String(fileBuffer.length));
+      response.end(fileBuffer);
+    } else {
+      response.sendFile(storedFile);
+    }
   } catch (error) {
     if (error.code === 'ENOENT') {
       response.status(404).end();
@@ -311,11 +395,19 @@ app.delete('/api/uploads/:id', requireOwner, async (request, response, next) => 
       return;
     }
 
-    const uploadDirectory = path.join(dataDirectory, 'uploads');
-    await Promise.all([
-      rm(path.join(uploadDirectory, `${request.params.id}.blob`), { force: true }),
-      rm(path.join(uploadDirectory, `${request.params.id}.json`), { force: true })
-    ]);
+    if (supabaseBucket) {
+      const { error } = await supabaseBucket.remove([
+        `uploads/${request.params.id}.blob`,
+        `uploads/${request.params.id}.json`
+      ]);
+      if (error) throw new Error(`Uploaded file could not be removed from Supabase: ${error.message}`, { cause: error });
+    } else {
+      const uploadDirectory = path.join(dataDirectory, 'uploads');
+      await Promise.all([
+        rm(path.join(uploadDirectory, `${request.params.id}.blob`), { force: true }),
+        rm(path.join(uploadDirectory, `${request.params.id}.json`), { force: true })
+      ]);
+    }
     response.status(204).end();
   } catch (error) {
     next(error);
