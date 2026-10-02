@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { VaultProvider, useVault } from './context/VaultContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -28,7 +28,8 @@ const AppContent: React.FC = () => {
     openDocument, 
     toggleBookmark, 
     goBack,
-    siteConfig
+    siteConfig,
+    isOwnerLoggedIn
   } = useVault();
 
   // Intro Splash screen: show strictly ONCE per session
@@ -47,6 +48,68 @@ const AppContent: React.FC = () => {
       sessionStorage.setItem('studyvault_splash_seen', 'true');
     } catch {}
   }, []);
+
+  const shouldEnableNotificationAds = !isOwnerLoggedIn &&
+    (viewState.view === 'semesters' || viewState.view === 'subjects');
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) {
+      console.error('Notification ads require browser service worker support.');
+      return;
+    }
+
+    let isCurrentView = true;
+    const unregisterNotificationWorker = async () => {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      const notificationRegistrations = registrations.filter(registration =>
+        [registration.active, registration.installing, registration.waiting].some(
+          worker => worker && new URL(worker.scriptURL).pathname === '/sw.js'
+        )
+      );
+      await Promise.all(notificationRegistrations.map(registration => registration.unregister()));
+    };
+
+    if (shouldEnableNotificationAds) {
+      void navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          if (!isCurrentView) return registration.unregister();
+          return undefined;
+        })
+        .catch(error => {
+          console.error('Could not enable notification ads.', error);
+        });
+    } else {
+      void unregisterNotificationWorker().catch(error => {
+        console.error('Could not disable notification ads.', error);
+      });
+    }
+
+    return () => {
+      isCurrentView = false;
+      if (shouldEnableNotificationAds) {
+        void unregisterNotificationWorker().catch(error => {
+          console.error('Could not disable notification ads.', error);
+        });
+      }
+    };
+  }, [shouldEnableNotificationAds]);
+
+  useEffect(() => {
+    if (isOwnerLoggedIn) return;
+
+    const adUrl = 'https://omg10.com/4/11922745';
+    const handleAdClick = (event: MouseEvent) => {
+      if (!(event.target instanceof Element)) return;
+
+      const clickable = event.target.closest('[data-ad-trigger]');
+      if (!clickable || clickable.matches(':disabled, [aria-disabled="true"]')) return;
+
+      window.open(adUrl, '_blank', 'noopener,noreferrer');
+    };
+
+    document.addEventListener('click', handleAdClick, true);
+    return () => document.removeEventListener('click', handleAdClick, true);
+  }, [isOwnerLoggedIn]);
 
   const savedDocs = documents.filter(d => bookmarks.includes(d.id));
 
