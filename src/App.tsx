@@ -9,6 +9,7 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { DocumentViewer } from './components/DocumentViewer';
 import { SplashScreen } from './components/SplashScreen';
+import { NotificationAdPrompt } from './components/NotificationAdPrompt';
 
 import { SelectCoursePage } from './pages/SelectCoursePage';
 import { SelectSemesterPage } from './pages/SelectSemesterPage';
@@ -41,6 +42,9 @@ const AppContent: React.FC = () => {
     } catch {}
     return true;
   });
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
+    typeof Notification === 'undefined' ? 'denied' : Notification.permission
+  );
 
   const handleFinishSplash = useCallback(() => {
     setShowSplash(false);
@@ -49,14 +53,13 @@ const AppContent: React.FC = () => {
     } catch {}
   }, []);
 
-  const shouldEnableNotificationAds = !isOwnerLoggedIn &&
+  const isOwnerView = viewState.view === 'owner-login' || viewState.view === 'owner-dashboard';
+  const shouldEnableNotificationAds = !isOwnerLoggedIn && !isOwnerView && notificationPermission === 'granted';
+  const showNotificationAdPrompt = !isOwnerLoggedIn &&
     (viewState.view === 'semesters' || viewState.view === 'subjects');
 
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) {
-      console.error('Notification ads require browser service worker support.');
-      return;
-    }
+    if (!('serviceWorker' in navigator)) return;
 
     let isCurrentView = true;
     const unregisterNotificationWorker = async () => {
@@ -247,6 +250,10 @@ const AppContent: React.FC = () => {
                 </div>
               )}
             </div>
+          )}
+
+          {showNotificationAdPrompt && (
+            <NotificationAdPrompt onPermissionChange={setNotificationPermission} />
           )}
         </main>
 
