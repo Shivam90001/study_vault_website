@@ -9,7 +9,6 @@ import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { DocumentViewer } from './components/DocumentViewer';
 import { SplashScreen } from './components/SplashScreen';
-import { NotificationAdPrompt } from './components/NotificationAdPrompt';
 
 import { SelectCoursePage } from './pages/SelectCoursePage';
 import { SelectSemesterPage } from './pages/SelectSemesterPage';
@@ -42,10 +41,6 @@ const AppContent: React.FC = () => {
     } catch {}
     return true;
   });
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(() =>
-    typeof Notification === 'undefined' ? 'denied' : Notification.permission
-  );
-
   const handleFinishSplash = useCallback(() => {
     setShowSplash(false);
     try {
@@ -54,48 +49,29 @@ const AppContent: React.FC = () => {
   }, []);
 
   const isOwnerView = viewState.view === 'owner-login' || viewState.view === 'owner-dashboard';
-  const shouldEnableNotificationAds = !isOwnerLoggedIn && !isOwnerView && notificationPermission === 'granted';
-  const showNotificationAdPrompt = !isOwnerLoggedIn &&
-    (viewState.view === 'semesters' || viewState.view === 'subjects');
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
 
-    let isCurrentView = true;
-    const unregisterNotificationWorker = async () => {
+    const updateMonetagServiceWorker = async () => {
       const registrations = await navigator.serviceWorker.getRegistrations();
-      const notificationRegistrations = registrations.filter(registration =>
+      const monetagRegistrations = registrations.filter(registration =>
         [registration.active, registration.installing, registration.waiting].some(
           worker => worker && new URL(worker.scriptURL).pathname === '/sw.js'
         )
       );
-      await Promise.all(notificationRegistrations.map(registration => registration.unregister()));
-    };
 
-    if (shouldEnableNotificationAds) {
-      void navigator.serviceWorker.register('/sw.js')
-        .then(registration => {
-          if (!isCurrentView) return registration.unregister();
-          return undefined;
-        })
-        .catch(error => {
-          console.error('Could not enable notification ads.', error);
-        });
-    } else {
-      void unregisterNotificationWorker().catch(error => {
-        console.error('Could not disable notification ads.', error);
-      });
-    }
-
-    return () => {
-      isCurrentView = false;
-      if (shouldEnableNotificationAds) {
-        void unregisterNotificationWorker().catch(error => {
-          console.error('Could not disable notification ads.', error);
-        });
+      if (isOwnerLoggedIn || isOwnerView) {
+        await Promise.all(monetagRegistrations.map(registration => registration.unregister()));
+      } else {
+        await navigator.serviceWorker.register('/sw.js');
       }
     };
-  }, [shouldEnableNotificationAds]);
+
+    void updateMonetagServiceWorker().catch(error => {
+      console.error('Could not update the Monetag service worker.', error);
+    });
+  }, [isOwnerLoggedIn, isOwnerView]);
 
   useEffect(() => {
     if (isOwnerLoggedIn) return;
@@ -252,9 +228,6 @@ const AppContent: React.FC = () => {
             </div>
           )}
 
-          {showNotificationAdPrompt && (
-            <NotificationAdPrompt onPermissionChange={setNotificationPermission} />
-          )}
         </main>
 
         <Footer />
