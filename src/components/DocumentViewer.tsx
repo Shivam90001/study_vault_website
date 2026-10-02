@@ -385,6 +385,7 @@ export const DocumentViewer: React.FC = () => {
                 {relatedDocs.map(rel => (
                   <button
                     key={rel.id}
+                    data-ad-trigger={['syllabus', 'pyq', 'notes', 'photo'].includes(rel.type) ? '' : undefined}
                     onClick={() => {
                       openDocument(rel);
                       setActivePageIndex(0);

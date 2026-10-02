@@ -51,7 +51,6 @@ export const SelectCoursePage: React.FC = () => {
           return (
             <div
               key={course.id}
-              data-ad-trigger
               onClick={() => navigateTo({ view: 'semesters', courseId: course.id })}
               className="group bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-indigo-500/60 rounded-2xl p-6 transition-all duration-200 hover:shadow-xl hover:shadow-indigo-500/10 cursor-pointer flex flex-col justify-between"
             >
